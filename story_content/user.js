@@ -1113,6 +1113,8 @@ window.Script34 = function()
     var four1 = player.GetVar("Four1") || "";
     var five1 = player.GetVar("Five1") || "";
     var six1 = player.GetVar("Six1") || "";
+    var seven1 = player.GetVar("Seven1") || "";
+    var eight1 = player.GetVar("Eight1") || "";
 
     var simBegin2 = player.GetVar("SimBegin2") || "";
     var one2 = player.GetVar("One2") || "";
@@ -1228,7 +1230,9 @@ window.Script34 = function()
         ["Initiated BVM:", three1],
         ["Applied pads:", four1],
         ["IV/IO access:", five1],
-        ["Rhythm/pulse check:", six1]
+        ["Rhythm/pulse check:", six1],
+        ["Epinephrine administered:", seven1],
+        ["Defib delivered:", eight1]
     ], left, 80);
 
     // Stage 2
