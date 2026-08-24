@@ -1282,7 +1282,65 @@ window.Script34 = function()
         );
     }
 
-    doc.save("Simulation_Debrief_Report.pdf");
+    // Prefer blob download so Wix iframes can still export (doc.save often blocked).
+    function savePdf(doc, filename) {
+        var blob;
+        try {
+            blob = doc.output("blob");
+        } catch (e0) {
+            try {
+                doc.save(filename);
+                return;
+            } catch (e1) {
+                alert("Could not create the PDF. Try opening the case in a new browser tab.");
+                return;
+            }
+        }
+
+        var url = URL.createObjectURL(blob);
+        var opened = false;
+
+        try {
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            a.rel = "noopener";
+            a.style.display = "none";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            opened = true;
+        } catch (e2) {}
+
+        if (!opened) {
+            try {
+                var win = window.open(url, "_blank");
+                opened = !!win;
+            } catch (e3) {}
+        }
+
+        if (!opened) {
+            try {
+                // Last resort for strict iframe sandboxes: data URL in same frame.
+                doc.output("dataurlnewwindow");
+                opened = true;
+            } catch (e4) {}
+        }
+
+        window.setTimeout(function () {
+            try {
+                URL.revokeObjectURL(url);
+            } catch (e5) {}
+        }, 60000);
+
+        if (!opened) {
+            alert(
+                "The PDF was created but this embedded page blocked the download. Open the case in a new tab (GitHub Pages) and use Print Summary again."
+            );
+        }
+    }
+
+    savePdf(doc, "Simulation_Debrief_Report.pdf");
 })();
 }
 
