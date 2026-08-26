@@ -1113,8 +1113,6 @@ window.Script34 = function()
     var four1 = player.GetVar("Four1") || "";
     var five1 = player.GetVar("Five1") || "";
     var six1 = player.GetVar("Six1") || "";
-    var seven1 = player.GetVar("Seven1") || "";
-    var eight1 = player.GetVar("Eight1") || "";
 
     var simBegin2 = player.GetVar("SimBegin2") || "";
     var one2 = player.GetVar("One2") || "";
@@ -1134,7 +1132,7 @@ window.Script34 = function()
     var compressions = player.GetVar("compressionsString") || "";
     var debrief = player.GetVar("Debrief") || "";
 
-    // Confirm the jsPDF library was loaded in story.html
+    // Confirm that jsPDF is available in story.html
     if (!window.jspdf || !window.jspdf.jsPDF) {
         alert("The PDF generator is not available. Please contact the course administrator.");
         return;
@@ -1149,95 +1147,277 @@ window.Script34 = function()
 
     var pageWidth = doc.internal.pageSize.getWidth();
     var pageHeight = doc.internal.pageSize.getHeight();
-    var left = 12;
-    var top = 14;
-    var lineHeight = 5;
-    var y = top;
+
+    // Page layout settings
+    var margin = 12;
+    var headerHeight = 15;
+    var footerHeight = 10;
+    var contentTop = 24;
+    var contentBottom = pageHeight - footerHeight - 5;
+
+    var cardGap = 6;
+    var cardWidth = (pageWidth - (margin * 2) - (cardGap * 2)) / 3;
+
+    var titleColor = [45, 45, 45];
+    var stageOneColor = [57, 91, 116];
+    var stageTwoColor = [75, 117, 162];
+    var stageThreeColor = [73, 111, 89];
+    var borderColor = [190, 190, 190];
+    var lightFill = [248, 248, 248];
 
     function cleanText(value) {
-        return String(value)
+        return String(value || "")
             .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/p>/gi, "\n")
             .replace(/<[^>]*>/g, "")
             .replace(/&nbsp;/gi, " ")
+            .replace(/&amp;/gi, "&")
+            .replace(/[ \t]+\n/g, "\n")
+            .replace(/\n{3,}/g, "\n\n")
             .trim();
     }
 
-    function addWrappedText(text, x, maxWidth, fontSize, color) {
-        doc.setFontSize(fontSize || 10);
-        doc.setTextColor(color || 30, color || 30, color || 30);
+    function normalizeCompressionLog(value) {
+        var text = cleanText(value);
 
-        var lines = doc.splitTextToSize(cleanText(text), maxWidth);
+        if (!text) {
+            return "No compression timestamps recorded.";
+        }
 
-        lines.forEach(function (line) {
-            if (y > pageHeight - 15) {
-                doc.addPage();
-                y = top;
-            }
-            doc.text(line, x, y);
-            y += lineHeight;
-        });
+        // Converts separators from Storyline variables into readable PDF lines.
+        return text
+            .replace(/\s*\|\s*/g, "\n")
+            .replace(/\s*(Compressions off:)/gi, "\n$1")
+            .replace(/\s*(Compressions on:)/gi, "\n$1")
+            .replace(/\n{2,}/g, "\n")
+            .trim();
     }
 
-    function addSection(title, entries, x, width) {
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(13);
-        doc.setTextColor(45, 45, 45);
-        doc.text(title, x, y);
+    function addHeader() {
+        doc.setFillColor(titleColor[0], titleColor[1], titleColor[2]);
+        doc.rect(0, 0, pageWidth, headerHeight, "F");
 
-        y += 7;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.setTextColor(255, 255, 255);
+        doc.text("Simulation Summary / Debrief Report", margin, 10);
+    }
+
+    function addFooter(pageNumber, totalPages) {
+        doc.setDrawColor(210, 210, 210);
+        doc.line(margin, pageHeight - footerHeight, pageWidth - margin, pageHeight - footerHeight);
+
         doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(105, 105, 105);
+
+        doc.text(
+            "Simulation debrief report • Page " + pageNumber + " of " + totalPages,
+            margin,
+            pageHeight - 4
+        );
+    }
+
+    function calculateStageHeight(entries, width) {
+        var padding = 5;
+        var rowGap = 2.5;
+        var headerSpace = 11;
+        var height = padding + headerSpace;
 
         entries.forEach(function (entry) {
             var label = entry[0];
             var value = cleanText(entry[1]);
 
-            if (value) {
-                doc.setFont("helvetica", "bold");
-                doc.setFontSize(9);
-                doc.setTextColor(45, 45, 45);
-                doc.text(label, x, y);
-
-                doc.setFont("helvetica", "normal");
-                doc.setTextColor(0, 0, 0);
-
-                var labelWidth = doc.getTextWidth(label + " ");
-                var lines = doc.splitTextToSize(value, width - labelWidth);
-
-                doc.text(lines, x + labelWidth, y);
-                y += Math.max(lineHeight, lines.length * lineHeight) + 1;
+            if (!value) {
+                return;
             }
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8.5);
+            var labelWidth = doc.getTextWidth(label + " ");
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8.5);
+
+            var valueWidth = width - (padding * 2) - labelWidth;
+            var valueLines = doc.splitTextToSize(value, Math.max(valueWidth, 25));
+
+            height += Math.max(5, valueLines.length * 4.2) + rowGap;
         });
 
-        y += 4;
+        return height + padding;
     }
 
-    // Report header
-    doc.setFillColor(45, 45, 45);
-    doc.rect(0, 0, pageWidth, 12, "F");
+    function drawStageCard(title, entries, x, y, width, height, accentColor) {
+        var padding = 5;
+        var currentY = y + 8;
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor(255, 255, 255);
-    doc.text("Simulation Summary / Debrief Report", left, 8);
+        // Card background and border
+        doc.setFillColor(lightFill[0], lightFill[1], lightFill[2]);
+        doc.roundedRect(x, y, width, height, 2, 2, "F");
 
-    y = 20;
+        doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+        doc.setLineWidth(0.35);
+        doc.roundedRect(x, y, width, height, 2, 2, "S");
 
-    // Stage 1
-    addSection("Stage One", [
+        // Stage title band
+        doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
+        doc.roundedRect(x, y, width, 10, 2, 2, "F");
+        doc.rect(x, y + 7, width, 3, "F");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(255, 255, 255);
+        doc.text(title, x + padding, y + 6.7);
+
+        currentY = y + 16;
+
+        entries.forEach(function (entry) {
+            var label = entry[0];
+            var value = cleanText(entry[1]);
+
+            if (!value) {
+                return;
+            }
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8.5);
+            doc.setTextColor(55, 55, 55);
+            doc.text(label, x + padding, currentY);
+
+            var labelWidth = doc.getTextWidth(label + " ");
+            var valueX = x + padding + labelWidth;
+            var valueWidth = width - (padding * 2) - labelWidth;
+
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(0, 0, 0);
+
+            var valueLines = doc.splitTextToSize(value, Math.max(valueWidth, 25));
+            doc.text(valueLines, valueX, currentY);
+
+            currentY += Math.max(5, valueLines.length * 4.2) + 2.5;
+        });
+    }
+
+    function ensureSpace(requiredHeight, currentY) {
+        if (currentY + requiredHeight > contentBottom) {
+            doc.addPage();
+            addHeader();
+            return contentTop;
+        }
+        return currentY;
+    }
+
+    function drawCompressionLog(startY) {
+        var logText = normalizeCompressionLog(compressions);
+        var x = margin;
+        var width = pageWidth - (margin * 2);
+        var padding = 6;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9.5);
+        var lines = doc.splitTextToSize(logText, width - (padding * 2));
+
+        var titleHeight = 12;
+        var lineHeight = 5;
+        var neededHeight = titleHeight + (lines.length * lineHeight) + (padding * 2);
+
+        startY = ensureSpace(Math.min(neededHeight, 45), startY);
+
+        // If log is short, use a single bordered box.
+        if (neededHeight <= contentBottom - startY) {
+            doc.setFillColor(252, 252, 252);
+            doc.roundedRect(x, startY, width, neededHeight, 2, 2, "F");
+
+            doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+            doc.roundedRect(x, startY, width, neededHeight, 2, 2, "S");
+
+            doc.setFillColor(titleColor[0], titleColor[1], titleColor[2]);
+            doc.roundedRect(x, startY, width, titleHeight, 2, 2, "F");
+            doc.rect(x, startY + 9, width, 3, "F");
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(11);
+            doc.setTextColor(255, 255, 255);
+            doc.text("Compressions Log", x + padding, startY + 7.5);
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(9.5);
+            doc.setTextColor(0, 0, 0);
+            doc.text(lines, x + padding, startY + titleHeight + 6);
+
+            return;
+        }
+
+        // Long logs continue onto additional pages.
+        var lineIndex = 0;
+        var firstPage = true;
+
+        while (lineIndex < lines.length) {
+            if (!firstPage) {
+                doc.addPage();
+                addHeader();
+                startY = contentTop;
+            }
+
+            var availableHeight = contentBottom - startY;
+            var boxHeight = availableHeight;
+            var availableLines = Math.floor((boxHeight - titleHeight - (padding * 2)) / lineHeight);
+
+            if (availableLines < 1) {
+                doc.addPage();
+                addHeader();
+                startY = contentTop;
+                availableHeight = contentBottom - startY;
+                boxHeight = availableHeight;
+                availableLines = Math.floor((boxHeight - titleHeight - (padding * 2)) / lineHeight);
+            }
+
+            var chunk = lines.slice(lineIndex, lineIndex + availableLines);
+            var actualHeight = titleHeight + (chunk.length * lineHeight) + (padding * 2);
+
+            doc.setFillColor(252, 252, 252);
+            doc.roundedRect(x, startY, width, actualHeight, 2, 2, "F");
+
+            doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+            doc.roundedRect(x, startY, width, actualHeight, 2, 2, "S");
+
+            doc.setFillColor(titleColor[0], titleColor[1], titleColor[2]);
+            doc.roundedRect(x, startY, width, titleHeight, 2, 2, "F");
+            doc.rect(x, startY + 9, width, 3, "F");
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(11);
+            doc.setTextColor(255, 255, 255);
+
+            doc.text(
+                firstPage ? "Compressions Log" : "Compressions Log (continued)",
+                x + padding,
+                startY + 7.5
+            );
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(9.5);
+            doc.setTextColor(0, 0, 0);
+            doc.text(chunk, x + padding, startY + titleHeight + 6);
+
+            lineIndex += chunk.length;
+            firstPage = false;
+        }
+    }
+
+    // Build the stages as structured data.
+    var stageOne = [
         ["Begin simulation:", simBegin1],
         ["Initial pulse check:", one1],
         ["Initiated compressions:", two1],
         ["Initiated BVM:", three1],
         ["Applied pads:", four1],
         ["IV/IO access:", five1],
-        ["Rhythm/pulse check:", six1],
-        ["Epinephrine administered:", seven1],
-        ["Defib delivered:", eight1]
-    ], left, 80);
+        ["Rhythm/pulse check:", six1]
+    ];
 
-    // Stage 2
-    y = 20;
-    addSection("Stage Two (Optional)", [
+    var stageTwo = [
         ["Begin Stage 2:", simBegin2],
         ["Rhythm/pulse check:", one2],
         ["Epinephrine administered:", two2],
@@ -1245,11 +1425,9 @@ window.Script34 = function()
         ["Switch compressors:", four2],
         ["Continuous compressions:", five2],
         ["Breath every 2–3 seconds:", six2]
-    ], 100, 80);
+    ];
 
-    // Stage 3
-    y = 20;
-    addSection("Stage Three", [
+    var stageThree = [
         ["Begin Stage 3:", simBegin3],
         ["Checked pulse:", one3],
         ["Announced ROSC:", two3],
@@ -1257,94 +1435,54 @@ window.Script34 = function()
         ["Post-resuscitation care:", four3],
         ["Called for transfer:", five3],
         ["Clicked Go to Debrief:", debrief]
-    ], 190, 80);
+    ];
 
-    // Compression log
-    y = 90;
-    doc.setDrawColor(170, 170, 170);
-    doc.line(left, y - 5, pageWidth - left, y - 5);
+    // Create report.
+    addHeader();
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.setTextColor(45, 45, 45);
-    doc.text("Compressions Log", left, y);
+    var stageOneHeight = calculateStageHeight(stageOne, cardWidth);
+    var stageTwoHeight = calculateStageHeight(stageTwo, cardWidth);
+    var stageThreeHeight = calculateStageHeight(stageThree, cardWidth);
 
-    y += 7;
-    doc.setFont("helvetica", "normal");
-    addWrappedText(compressions || "No compression timestamps recorded.", left, pageWidth - (left * 2), 10, 0);
+    var stageCardHeight = Math.max(stageOneHeight, stageTwoHeight, stageThreeHeight);
+    var stageY = contentTop;
 
-    // Footer on every page
+    // If a stage section somehow becomes too tall, continue the log on page 2.
+    if (stageY + stageCardHeight > contentBottom - 25) {
+        stageCardHeight = contentBottom - stageY - 25;
+    }
+
+    drawStageCard("Stage One", stageOne, margin, stageY, cardWidth, stageCardHeight, stageOneColor);
+    drawStageCard(
+        "Stage Two (Optional)",
+        stageTwo,
+        margin + cardWidth + cardGap,
+        stageY,
+        cardWidth,
+        stageCardHeight,
+        stageTwoColor
+    );
+    drawStageCard(
+        "Stage Three",
+        stageThree,
+        margin + ((cardWidth + cardGap) * 2),
+        stageY,
+        cardWidth,
+        stageCardHeight,
+        stageThreeColor
+    );
+
+    drawCompressionLog(stageY + stageCardHeight + 8);
+
+    // Add footer after every page is created.
     var totalPages = doc.getNumberOfPages();
+
     for (var page = 1; page <= totalPages; page++) {
         doc.setPage(page);
-        doc.setFontSize(8);
-        doc.setTextColor(100, 100, 100);
-        doc.text(
-            "Simulation debrief report • Page " + page + " of " + totalPages,
-            left,
-            pageHeight - 7
-        );
+        addFooter(page, totalPages);
     }
 
-    // Prefer blob download so Wix iframes can still export (doc.save often blocked).
-    function savePdf(doc, filename) {
-        var blob;
-        try {
-            blob = doc.output("blob");
-        } catch (e0) {
-            try {
-                doc.save(filename);
-                return;
-            } catch (e1) {
-                alert("Could not create the PDF. Try opening the case in a new browser tab.");
-                return;
-            }
-        }
-
-        var url = URL.createObjectURL(blob);
-        var opened = false;
-
-        try {
-            var a = document.createElement("a");
-            a.href = url;
-            a.download = filename;
-            a.rel = "noopener";
-            a.style.display = "none";
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            opened = true;
-        } catch (e2) {}
-
-        if (!opened) {
-            try {
-                var win = window.open(url, "_blank");
-                opened = !!win;
-            } catch (e3) {}
-        }
-
-        if (!opened) {
-            try {
-                // Last resort for strict iframe sandboxes: data URL in same frame.
-                doc.output("dataurlnewwindow");
-                opened = true;
-            } catch (e4) {}
-        }
-
-        window.setTimeout(function () {
-            try {
-                URL.revokeObjectURL(url);
-            } catch (e5) {}
-        }, 60000);
-
-        if (!opened) {
-            alert(
-                "The PDF was created but this embedded page blocked the download. Open the case in a new tab (GitHub Pages) and use Print Summary again."
-            );
-        }
-    }
-
-    savePdf(doc, "Simulation_Debrief_Report.pdf");
+    doc.save("Simulation_Debrief_Report.pdf");
 })();
 }
 
