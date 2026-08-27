@@ -1523,7 +1523,7 @@ window.Script34 = function()
         doc.line(margin, pageHeight - footerHeight, pageWidth - margin, pageHeight - footerHeight);
 
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(7.5);
+        doc.setFontSize(8.5);
         doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
         doc.text("SimBox+ · Anonymous session summary · Not a medical record", margin, pageHeight - 4.5);
         doc.text("Page " + pageNumber + " of " + totalPages, pageWidth - margin, pageHeight - 4.5, { align: "right" });
@@ -1539,29 +1539,29 @@ window.Script34 = function()
     }
 
     function measureEntryRow(label, rawValue, width, keepFullDate) {
-        var padX = 6;
+        var padX = 5.5;
         var inner = width - padX * 2;
         var values = formatDisplayValues(rawValue, keepFullDate);
         if (!values.length) return 0;
 
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(7.5);
+        doc.setFontSize(9);
         var labelLines = doc.splitTextToSize(label.replace(/:$/, ""), inner);
-        var labelH = labelLines.length * 3.4;
+        var labelH = labelLines.length * 4.0;
 
         doc.setFont("courier", "bold");
-        doc.setFontSize(9);
+        doc.setFontSize(11);
         var valueH = 0;
         values.forEach(function (val) {
             var valueLines = doc.splitTextToSize(val, inner);
-            valueH += valueLines.length * 4.4 + 0.4;
+            valueH += valueLines.length * 5.0 + 0.4;
         });
 
-        return Math.max(labelH + valueH + 5, 11);
+        return Math.max(labelH + valueH + 5.5, 13);
     }
 
     function drawEntryRow(x, y, width, label, rawValue, rowIndex, keepFullDate) {
-        var padX = 6;
+        var padX = 5.5;
         var inner = width - padX * 2;
         var values = formatDisplayValues(rawValue, keepFullDate);
         if (!values.length) return 0;
@@ -1576,19 +1576,19 @@ window.Script34 = function()
         doc.rect(x + 1.5, y, width - 3, rowH, "F");
 
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(7.5);
+        doc.setFontSize(9);
         doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
         var labelLines = doc.splitTextToSize(label.replace(/:$/, ""), inner);
-        doc.text(labelLines, x + padX, y + 4.2);
+        doc.text(labelLines, x + padX, y + 4.8);
 
-        var valueY = y + 4.2 + labelLines.length * 3.4 + 0.8;
+        var valueY = y + 4.8 + labelLines.length * 4.0 + 0.9;
         values.forEach(function (val) {
             doc.setFont("courier", "bold");
-            doc.setFontSize(9);
+            doc.setFontSize(11);
             doc.setTextColor(theme.copper[0], theme.copper[1], theme.copper[2]);
             var valueLines = doc.splitTextToSize(val, inner);
             doc.text(valueLines, x + padX, valueY);
-            valueY += valueLines.length * 4.4 + 0.4;
+            valueY += valueLines.length * 5.0 + 0.4;
         });
 
         doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
@@ -1599,10 +1599,10 @@ window.Script34 = function()
     }
 
     function measureStageCard(entries, width) {
-        var headerH = 16;
+        var headerH = 17;
         var padBottom = 5;
         if (!stageHasValues(entries)) {
-            return headerH + padBottom + 14;
+            return headerH + padBottom + 16;
         }
         var total = headerH + padBottom;
         entries.forEach(function (entry) {
@@ -1620,31 +1620,31 @@ window.Script34 = function()
         doc.roundedRect(x, y, width, height, 2.5, 2.5, "S");
 
         doc.setFillColor(stageTheme.accent[0], stageTheme.accent[1], stageTheme.accent[2]);
-        doc.roundedRect(x, y, width, 13, 2.5, 2.5, "F");
-        doc.rect(x, y + 10, width, 3, "F");
+        doc.roundedRect(x, y, width, 14, 2.5, 2.5, "F");
+        doc.rect(x, y + 11, width, 3, "F");
 
         doc.setFillColor(stageTheme.tint[0], stageTheme.tint[1], stageTheme.tint[2]);
-        doc.rect(x + 1.5, y + 13, width - 3, 3, "F");
+        doc.rect(x + 1.5, y + 14, width - 3, 3, "F");
 
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
+        doc.setFontSize(11);
         doc.setTextColor(255, 255, 255);
-        doc.text(stageTheme.title, x + 6, y + 7.2);
+        doc.text(stageTheme.title, x + 6, y + 7.8);
 
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(7);
+        doc.setFontSize(8);
         doc.setTextColor(240, 248, 247);
-        doc.text(stageTheme.subtitle, x + 6, y + 11);
+        doc.text(stageTheme.subtitle, x + 6, y + 12);
 
         if (!stageHasValues(entries)) {
             doc.setFont("helvetica", "italic");
-            doc.setFontSize(8.5);
+            doc.setFontSize(10);
             doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
-            doc.text("Not run in this session", x + 6, y + 22);
+            doc.text("Not run in this session", x + 6, y + 24);
             return;
         }
 
-        var cursorY = y + 16;
+        var cursorY = y + 17;
         var rowIndex = 0;
         var contentLimit = y + height - 2;
 
@@ -1659,18 +1659,18 @@ window.Script34 = function()
     }
 
     function drawSectionTitle(y, title, subtitle) {
-        y = ensureSpace(12, y);
+        y = ensureSpace(14, y);
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(11);
+        doc.setFontSize(12.5);
         doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
         doc.text(title, margin, y);
 
         if (subtitle) {
             doc.setFont("helvetica", "normal");
-            doc.setFontSize(8);
+            doc.setFontSize(9);
             doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
-            doc.text(subtitle, margin, y + 4.5);
-            y += 4.5;
+            doc.text(subtitle, margin, y + 5);
+            y += 5;
         }
 
         doc.setDrawColor(theme.teal[0], theme.teal[1], theme.teal[2]);
@@ -1691,15 +1691,15 @@ window.Script34 = function()
 
         var displayValue = pdfSafeText(cleanText(value) || "—");
         doc.setFont(useCourier ? "courier" : "helvetica", "bold");
-        doc.setFontSize(displayValue.length > 8 ? 11 : 14);
+        doc.setFontSize(displayValue.length > 8 ? 12 : 15);
         doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
         var valueLines = doc.splitTextToSize(displayValue, w - 8);
-        doc.text(valueLines, x + w / 2, y + (valueLines.length > 1 ? 9 : 11), { align: "center" });
+        doc.text(valueLines, x + w / 2, y + (valueLines.length > 1 ? 9.5 : 11.5), { align: "center" });
 
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(7.5);
+        doc.setFontSize(8.5);
         doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
-        doc.text(label, x + w / 2, y + 16, { align: "center" });
+        doc.text(label, x + w / 2, y + 17, { align: "center" });
     }
 
     function drawGlanceStrip(startY, stageSets) {
@@ -1868,11 +1868,11 @@ window.Script34 = function()
 
             if (seg.type === "gap" && w >= 10) {
                 doc.setFont("courier", "bold");
-                doc.setFontSize(6.5);
+                doc.setFontSize(8);
                 doc.setTextColor(255, 255, 255);
                 var label = formatClock(seg.duration);
                 if (doc.getTextWidth(label) < w - 1) {
-                    doc.text(label, x0 + w / 2, barY + 8.5, { align: "center" });
+                    doc.text(label, x0 + w / 2, barY + 9, { align: "center" });
                 }
             }
         });
@@ -1886,12 +1886,12 @@ window.Script34 = function()
         var lx = barX;
         legendItems.forEach(function (item) {
             doc.setFillColor(item.color[0], item.color[1], item.color[2]);
-            doc.rect(lx, legendY - 2.5, 4, 4, "F");
+            doc.rect(lx, legendY - 2.5, 4.5, 4.5, "F");
             doc.setFont("helvetica", "normal");
-            doc.setFontSize(7.5);
+            doc.setFontSize(8.5);
             doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
-            doc.text(item.label, lx + 5.5, legendY + 0.8);
-            lx += 22;
+            doc.text(item.label, lx + 6, legendY + 1);
+            lx += 26;
         });
 
         return startY + boxH + 6;
@@ -1899,7 +1899,7 @@ window.Script34 = function()
 
     function drawCompressionStats(startY) {
         var tileGap = 6;
-        var tileH = 20;
+        var tileH = 22;
         var tileW = (pageWidth - margin * 2 - tileGap * 2) / 3;
         var blockH = tileH + 8;
 
@@ -1921,10 +1921,10 @@ window.Script34 = function()
         if (detailsText && detailsText !== "No completed compression interruptions recorded.") {
             var boxW = pageWidth - margin * 2;
             var pad = 6;
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(8.5);
+            doc.setFont("courier", "normal");
+            doc.setFontSize(10);
             var detailLines = doc.splitTextToSize(detailsText.replace(/<br\s*\/?>/gi, "\n"), boxW - pad * 2);
-            var boxH = 10 + detailLines.length * 4.2;
+            var boxH = 12 + detailLines.length * 5.0;
             startY = ensureSpace(boxH + 4, startY);
 
             doc.setFillColor(theme.tealTint[0], theme.tealTint[1], theme.tealTint[2]);
@@ -1933,14 +1933,14 @@ window.Script34 = function()
             doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "S");
 
             doc.setFont("helvetica", "bold");
-            doc.setFontSize(8);
+            doc.setFontSize(9);
             doc.setTextColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
-            doc.text("Time between compressions (each gap)", margin + pad, startY + 5.5);
+            doc.text("Time between compressions (each gap)", margin + pad, startY + 6.5);
 
             doc.setFont("courier", "normal");
-            doc.setFontSize(8.5);
+            doc.setFontSize(10);
             doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
-            doc.text(detailLines, margin + pad, startY + 10.5);
+            doc.text(detailLines, margin + pad, startY + 12.5);
 
             startY += boxH + 6;
         }
@@ -1955,11 +1955,11 @@ window.Script34 = function()
         var isOn = lower.indexOf("compressions on") !== -1;
         var isGap = lower.indexOf("time between compressions") !== -1;
         var isLong = isGap && lower.indexOf("[long]") !== -1;
-        var lineHeight = 4.6;
-        var padY = 1.2;
+        var lineHeight = 5.4;
+        var padY = 1.6;
 
         doc.setFont(isGap || isOff || isOn ? "courier" : "helvetica", isOff || isOn || isGap ? "bold" : "normal");
-        doc.setFontSize(8.5);
+        doc.setFontSize(10);
         var textLines = doc.splitTextToSize(safeLine, maxWidth - 6);
         var blockH = textLines.length * lineHeight + padY * 2;
 
@@ -2016,9 +2016,9 @@ window.Script34 = function()
 
             while (probeIndex < lines.length) {
                 doc.setFont("helvetica", "normal");
-                doc.setFontSize(8.5);
+                doc.setFontSize(10);
                 var textLines = doc.splitTextToSize(pdfSafeText(lines[probeIndex]), innerW - 6);
-                var lineBlockH = textLines.length * 4.6 + 1.2 * 2 + 1.2;
+                var lineBlockH = textLines.length * 5.4 + 1.6 * 2 + 1.2;
                 if (chunk.length && chunkHeight + lineBlockH > available) break;
                 if (!chunk.length && lineBlockH > available) {
                     chunk.push(lines[probeIndex]);
@@ -2044,9 +2044,9 @@ window.Script34 = function()
             doc.rect(margin, startY + 8, boxW, 3, "F");
 
             doc.setFont("helvetica", "bold");
-            doc.setFontSize(9);
+            doc.setFontSize(10);
             doc.setTextColor(255, 255, 255);
-            doc.text(firstChunk ? "Event log" : "Event log (continued)", margin + pad, startY + 7);
+            doc.text(firstChunk ? "Event log" : "Event log (continued)", margin + pad, startY + 7.5);
 
             var cursorY = startY + headerH + pad;
             chunk.forEach(function (line) {
