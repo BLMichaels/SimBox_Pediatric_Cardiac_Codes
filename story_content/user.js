@@ -1176,14 +1176,15 @@ window.Script34 = function()
 
     var LONG_GAP_SECONDS = 10;
     var margin = 14;
-    var headerHeight = 22;
+    var headerHeight = 24;
     var footerHeight = 11;
-    var contentTop = 30;
+    var contentTop = 32;
     var contentBottom = pageHeight - footerHeight - 6;
     var cardGap = 7;
     var cardWidth = (pageWidth - margin * 2 - cardGap * 2) / 3;
-    var logoW = 34;
-    var logoH = 14.3;
+    // Tight cropped logo aspect ~780:220 ≈ 3.55:1
+    var logoW = 38;
+    var logoH = 10.7;
 
     var stageThemes = [
         { title: "Stage One", subtitle: "Initial response", accent: theme.teal, tint: theme.tealTint },
@@ -1477,40 +1478,58 @@ window.Script34 = function()
     function addHeader() {
         paintPageBackground();
 
-        doc.setFillColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
+        // Clinical letterhead: light surface, brand + title, teal rule (no floating badge)
+        doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
         doc.rect(0, 0, pageWidth, headerHeight, "F");
-
-        doc.setFillColor(theme.teal[0], theme.teal[1], theme.teal[2]);
-        doc.rect(0, headerHeight - 2.5, pageWidth, 2.5, "F");
 
         var textX = margin;
         var logoUrl = window.SIMBOX_LOGO_DATA_URL || "";
+        var logoDrawn = false;
         if (logoUrl) {
             try {
-                // Light plate behind logo so blue + red read clearly on the teal header
-                doc.setFillColor(theme.paper[0], theme.paper[1], theme.paper[2]);
-                doc.roundedRect(margin - 0.8, 3.0, logoW + 1.6, logoH + 1.2, 1.2, 1.2, "F");
-                doc.addImage(logoUrl, "JPEG", margin, 3.6, logoW, logoH);
-                textX = margin + logoW + 5;
+                var logoY = (headerHeight - 3 - logoH) / 2;
+                doc.addImage(logoUrl, "JPEG", margin, logoY, logoW, logoH);
+                textX = margin + logoW + 6;
+                logoDrawn = true;
             } catch (logoErr) {
                 textX = margin;
             }
         }
 
+        if (!logoDrawn) {
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(12);
+            doc.setTextColor(40, 80, 150);
+            doc.text("SimBox", margin, 11);
+            var simW = doc.getTextWidth("SimBox");
+            doc.setTextColor(200, 40, 40);
+            doc.text("+", margin + simW + 0.5, 11);
+            textX = margin + simW + 8;
+        }
+
+        if (logoDrawn || textX > margin) {
+            doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+            doc.setLineWidth(0.35);
+            doc.line(textX - 3, 6, textX - 3, headerHeight - 6);
+        }
+
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(13);
-        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(12.5);
+        doc.setTextColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
         doc.text("Pediatric Cardiac Codes", textX, 10);
 
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(8.5);
-        doc.setTextColor(220, 236, 235);
+        doc.setFontSize(8);
+        doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
         doc.text("Simulation debrief report", textX, 15.5);
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7.5);
-        doc.setTextColor(210, 228, 227);
-        doc.text(generatedAt, pageWidth - margin, 12, { align: "right" });
+        doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+        doc.text(generatedAt, pageWidth - margin, 11.5, { align: "right" });
+
+        doc.setFillColor(theme.teal[0], theme.teal[1], theme.teal[2]);
+        doc.rect(0, headerHeight - 2.2, pageWidth, 2.2, "F");
     }
 
     function addFooter(pageNumber, totalPages) {
