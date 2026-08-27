@@ -1968,13 +1968,14 @@ window.Script34 = function()
     }
 
     function drawCompressionRound(x, y, width, round) {
-        var rowH = 12;
+        var rowH = 14;
         var labelW = 16;
         var gap = 3;
         var cellW = (width - labelW - gap * 3) / 3;
-        var cellH = 9;
-        var cellY = y + 1.5;
-        var textY = y + 8.2;
+        var cellH = 11;
+        var cellY = y + (rowH - cellH) / 2;
+        var cellCenterY = cellY + cellH / 2;
+        var rowCenterY = y + rowH / 2;
 
         doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
         doc.roundedRect(x, y, width, rowH, 1.8, 1.8, "F");
@@ -1985,7 +1986,7 @@ window.Script34 = function()
         doc.setFont("helvetica", "bold");
         doc.setFontSize(9);
         doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
-        doc.text("#" + round.number, x + 3, textY);
+        doc.text("#" + round.number, x + 3, rowCenterY, { baseline: "middle" });
 
         var cells = [
             { label: "OFF", value: round.offClock, bg: theme.dangerTint, fg: theme.danger },
@@ -2003,16 +2004,15 @@ window.Script34 = function()
             doc.setFillColor(cell.bg[0], cell.bg[1], cell.bg[2]);
             doc.roundedRect(cx, cellY, cellW, cellH, 1.2, 1.2, "F");
 
-            // Single baseline: label left, time right
             doc.setFont("helvetica", "bold");
-            doc.setFontSize(8);
+            doc.setFontSize(8.5);
             doc.setTextColor(cell.fg[0], cell.fg[1], cell.fg[2]);
-            doc.text(cell.label, cx + 3, textY);
+            doc.text(cell.label, cx + 3.5, cellCenterY, { baseline: "middle" });
 
             doc.setFont("courier", "bold");
             doc.setFontSize(10);
             doc.setTextColor(cell.fg[0], cell.fg[1], cell.fg[2]);
-            doc.text(cell.value, cx + cellW - 3, textY, { align: "right" });
+            doc.text(cell.value, cx + cellW - 3.5, cellCenterY, { align: "right", baseline: "middle" });
         });
 
         return rowH + 4;
@@ -2068,7 +2068,7 @@ window.Script34 = function()
 
             while (probe < rounds.length) {
                 var item = rounds[probe];
-                var itemH = item.type === "round" ? 16 : 15;
+                var itemH = item.type === "round" ? 18 : 15;
                 if (chunk.length && chunkHeight + itemH > available) break;
                 if (!chunk.length && itemH > available) {
                     chunk.push(item);
