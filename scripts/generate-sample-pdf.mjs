@@ -18,41 +18,49 @@ const sampleVars = {
   SimBegin1: "8/21/2026 at 14:31:41",
   One1: "0:05",
   Two1: "0:09",
-  Three1: "0:17",
-  Four1: "0:20",
-  Five1: "0:33",
-  Six1: "0:43<br>0:52",
-  Seven1: "0:36",
-  Eight1: "0:39",
+  Three1: "0:17<br>0:22",
+  Four1: "0:20<br>0:28",
+  Five1: "0:33<br>0:41<br>0:48",
+  Six1: "0:43<br>0:52<br>1:05<br>1:14",
+  Seven1: "0:36<br>1:12",
+  Eight1: "0:39<br>1:08",
   SimBegin2: "0:47",
-  One2: "0:52",
-  Two2: "0:53",
-  Three2: "01:31",
-  Four2: "0:56",
-  Five2: "0:59",
-  Six2: "0:59",
+  One2: "0:52<br>1:04<br>1:18",
+  Two2: "0:53<br>1:15",
+  Three2: "01:31<br>02:05",
+  Four2: "0:56<br>1:22",
+  Five2: "0:59<br>1:28<br>1:42",
+  Six2: "0:59<br>1:35",
   SimBegin3: "01:17",
-  One3: "01:29",
+  One3: "01:29<br>01:33",
   Two3: "01:30",
-  Three3: "01:31",
-  Four3: "01:31",
-  Five3: "01:32",
-  Debrief: "01:36",
+  Three3: "01:31<br>02:26",
+  Four3: "01:31<br>02:28",
+  Five3: "01:32<br>02:30",
+  Debrief: "02:35",
   compressionsString:
     "Initial compression started at: 0:09<br>" +
     "Compressions off: 00:25 | Compressions on: 00:29<br>" +
     "Compressions off: 00:43 | Compressions on: 00:45<br>" +
     "Compressions off: 00:52 | Compressions on: 01:00<br>" +
     "Compressions off: 01:08 | Compressions on: 01:13<br>" +
-    "Stopped Compressions: 01:31",
-  CompressionPauseCount: "4",
-  CompressionPauseTotal: "00:19",
-  CompressionPauseAverage: "00:05",
+    "Compressions off: 01:22 | Compressions on: 01:38<br>" +
+    "Compressions off: 01:45 | Compressions on: 01:48<br>" +
+    "Compressions off: 01:55 | Compressions on: 02:02<br>" +
+    "Compressions off: 02:10 | Compressions on: 02:25<br>" +
+    "Stopped Compressions: 02:28",
+  CompressionPauseCount: "8",
+  CompressionPauseTotal: "01:02",
+  CompressionPauseAverage: "00:08",
   CompressionPauseDetails:
     "Gap 1: 00:25-00:29 = 00:04 between compressions<br>" +
     "Gap 2: 00:43-00:45 = 00:02 between compressions<br>" +
     "Gap 3: 00:52-01:00 = 00:08 between compressions<br>" +
-    "Gap 4: 01:08-01:13 = 00:05 between compressions"
+    "Gap 4: 01:08-01:13 = 00:05 between compressions<br>" +
+    "Gap 5: 01:22-01:38 = 00:16 between compressions [LONG >10s]<br>" +
+    "Gap 6: 01:45-01:48 = 00:03 between compressions<br>" +
+    "Gap 7: 01:55-02:02 = 00:07 between compressions<br>" +
+    "Gap 8: 02:10-02:25 = 00:15 between compressions [LONG >10s]"
 };
 
 const jspdfCode = fs.readFileSync(path.join(root, "vendor/jspdf.umd.min.js"), "utf8");

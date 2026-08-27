@@ -1566,17 +1566,17 @@ window.Script34 = function()
         doc.setFont("helvetica", "normal");
         doc.setFontSize(9);
         var labelLines = doc.splitTextToSize(label.replace(/:$/, ""), inner);
-        var labelH = labelLines.length * 4.0;
+        var labelH = labelLines.length * 3.8;
 
         doc.setFont("courier", "bold");
         doc.setFontSize(11);
         var valueH = 0;
         values.forEach(function (val) {
             var valueLines = doc.splitTextToSize(val, inner);
-            valueH += valueLines.length * 5.5 + 1.2;
+            valueH += valueLines.length * 4.8 + 0.5;
         });
 
-        return Math.max(labelH + valueH + 8, 15);
+        return Math.max(labelH + valueH + 5, 12);
     }
 
     function drawEntryRow(x, y, width, label, rawValue, rowIndex, keepFullDate) {
@@ -1598,16 +1598,16 @@ window.Script34 = function()
         doc.setFontSize(9);
         doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
         var labelLines = doc.splitTextToSize(label.replace(/:$/, ""), inner);
-        doc.text(labelLines, x + padX, y + 4.8);
+        doc.text(labelLines, x + padX, y + 4.5);
 
-        var valueY = y + 4.8 + labelLines.length * 4.0 + 1.8;
+        var valueY = y + 4.5 + labelLines.length * 3.8 + 1.0;
         values.forEach(function (val) {
             doc.setFont("courier", "bold");
             doc.setFontSize(11);
             doc.setTextColor(theme.copper[0], theme.copper[1], theme.copper[2]);
             var valueLines = doc.splitTextToSize(val, inner);
             doc.text(valueLines, x + padX, valueY);
-            valueY += valueLines.length * 5.5 + 1.2;
+            valueY += valueLines.length * 4.8 + 0.5;
         });
 
         doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
@@ -1619,7 +1619,7 @@ window.Script34 = function()
 
     function measureStageCard(entries, width) {
         var headerH = 17;
-        var padBottom = 8;
+        var padBottom = 4;
         if (!stageHasValues(entries)) {
             return headerH + padBottom + 16;
         }
@@ -1631,7 +1631,29 @@ window.Script34 = function()
         return total;
     }
 
-    function drawStageCard(stageTheme, entries, x, y, width, height) {
+    function measureStageCardFromIndex(entries, width, startIndex, maxHeight) {
+        var headerH = 17;
+        var padBottom = 4;
+        var total = headerH + padBottom;
+        if (!stageHasValues(entries)) {
+            return headerH + padBottom + 16;
+        }
+
+        for (var i = startIndex || 0; i < entries.length; i++) {
+            var rowH = measureEntryRow(entries[i][0], entries[i][1], width, entries[i][2] === true);
+            if (rowH <= 0) continue;
+            if (maxHeight && total + rowH > maxHeight) break;
+            total += rowH;
+        }
+
+        return total;
+    }
+
+    function drawStageCard(stageTheme, entries, x, y, width, height, options) {
+        options = options || {};
+        var startIndex = options.startIndex || 0;
+        var continued = options.continued || false;
+        var forceRow = options.forceRow || false;
         doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
         doc.roundedRect(x, y, width, height, 2.5, 2.5, "F");
         doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
@@ -1648,7 +1670,7 @@ window.Script34 = function()
         doc.setFont("helvetica", "bold");
         doc.setFontSize(11);
         doc.setTextColor(255, 255, 255);
-        doc.text(stageTheme.title, x + 6, y + 7.8);
+        doc.text(stageTheme.title + (continued ? " (cont.)" : ""), x + 6, y + 7.8);
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8);
@@ -1660,21 +1682,108 @@ window.Script34 = function()
             doc.setFontSize(10);
             doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
             doc.text("Not run in this session", x + 6, y + 24);
-            return;
+            return entries.length;
         }
 
         var cursorY = y + 17;
         var rowIndex = 0;
-        var contentLimit = y + height - 6;
+        var contentLimit = y + height - 4;
+        var entryIndex = startIndex;
 
-        entries.forEach(function (entry) {
+        for (; entryIndex < entries.length; entryIndex++) {
+            var entry = entries[entryIndex];
             var rowH = measureEntryRow(entry[0], entry[1], width, entry[2] === true);
-            if (rowH <= 0) return;
-            if (cursorY + rowH > contentLimit) return;
+            if (rowH <= 0) continue;
+            if (!forceRow && cursorY + rowH > contentLimit) break;
             rowH = drawEntryRow(x, cursorY, width, entry[0], entry[1], rowIndex, entry[2] === true);
             cursorY += rowH;
             rowIndex += 1;
-        });
+        }
+
+        return entryIndex;
+    }
+
+    function drawStageCardsSection(startY, stageSets) {
+        var indices = stageSets.map(function () { return 0; });
+        var sectionStarted = false;
+        var pageContinued = false;
+
+        while (true) {
+            var anyRemaining = stageSets.some(function (entries, i) {
+                return indices[i] < entries.length;
+            });
+            if (!anyRemaining) break;
+
+            if (!sectionStarted) {
+                startY = drawSectionTitle(
+                    startY,
+                    "Code timeline by stage",
+                    "Clinical actions and simulation clock timestamps"
+                );
+                sectionStarted = true;
+            } else if (pageContinued) {
+                startY = drawSectionTitle(
+                    startY,
+                    "Code timeline by stage (continued)",
+                    "Clinical actions and simulation clock timestamps"
+                );
+            }
+
+            var availableH = contentBottom - startY - 8;
+            if (availableH < 36) {
+                doc.addPage();
+                addHeader();
+                startY = contentTop;
+                pageContinued = true;
+                continue;
+            }
+
+            var chunkHeights = stageSets.map(function (entries, i) {
+                if (indices[i] >= entries.length) return 0;
+                return measureStageCardFromIndex(entries, cardWidth, indices[i], availableH);
+            });
+            var stageCardHeight = Math.max.apply(null, chunkHeights.filter(function (h) { return h > 0; }).concat([36]));
+
+            var prevIndices = indices.slice();
+            stageThemes.forEach(function (st, i) {
+                var x = margin + (cardWidth + cardGap) * i;
+                if (indices[i] < stageSets[i].length) {
+                    indices[i] = drawStageCard(st, stageSets[i], x, startY, cardWidth, stageCardHeight, {
+                        startIndex: indices[i],
+                        continued: indices[i] > 0
+                    });
+                }
+            });
+
+            var progressed = indices.some(function (idx, i) {
+                return idx > prevIndices[i];
+            });
+            if (!progressed && anyRemaining) {
+                stageThemes.forEach(function (st, i) {
+                    var x = margin + (cardWidth + cardGap) * i;
+                    if (indices[i] < stageSets[i].length) {
+                        indices[i] = drawStageCard(st, stageSets[i], x, startY, cardWidth, availableH, {
+                            startIndex: indices[i],
+                            continued: indices[i] > 0,
+                            forceRow: true
+                        });
+                    }
+                });
+            }
+
+            startY = startY + stageCardHeight + 8;
+            pageContinued = stageSets.some(function (entries, i) {
+                return indices[i] < entries.length;
+            });
+
+            if (pageContinued) {
+                doc.addPage();
+                addHeader();
+                startY = contentTop;
+            }
+        }
+
+        return startY;
     }
 
     function drawSectionTitle(y, title, subtitle) {
@@ -2137,24 +2246,15 @@ window.Script34 = function()
     y = drawGlanceStrip(y, stageSets);
     y = drawKeyIntervals(y);
 
-    var stageHeights = stageSets.map(function (entries) {
-        return measureStageCard(entries, cardWidth);
-    });
-    var stageCardHeight = Math.max.apply(null, stageHeights);
-    // Keep section title + stage cards together (avoid orphan title / empty page)
-    var stageBlockH = 14 + stageCardHeight;
-    if (y + stageBlockH > contentBottom) {
+    var maxStageCardH = contentBottom - contentTop - 16;
+    // Keep at least one stage-card page with the section title on the current page when possible
+    if (y + 16 + maxStageCardH > contentBottom) {
         doc.addPage();
         addHeader();
         y = contentTop;
     }
 
-    y = drawSectionTitle(y, "Code timeline by stage", "Clinical actions and simulation clock timestamps");
-
-    stageThemes.forEach(function (st, i) {
-        drawStageCard(st, stageSets[i], margin + (cardWidth + cardGap) * i, y, cardWidth, stageCardHeight);
-    });
-    y = y + stageCardHeight + 8;
+    y = drawStageCardsSection(y, stageSets);
 
     // Start compression analysis on a fresh page when little room remains
     if (y + 55 > contentBottom) {
