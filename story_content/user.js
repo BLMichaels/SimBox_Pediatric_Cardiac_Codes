@@ -1573,10 +1573,10 @@ window.Script34 = function()
         var valueH = 0;
         values.forEach(function (val) {
             var valueLines = doc.splitTextToSize(val, inner);
-            valueH += valueLines.length * 5.0 + 0.4;
+            valueH += valueLines.length * 5.5 + 1.2;
         });
 
-        return Math.max(labelH + valueH + 5.5, 13);
+        return Math.max(labelH + valueH + 8, 15);
     }
 
     function drawEntryRow(x, y, width, label, rawValue, rowIndex, keepFullDate) {
@@ -1600,14 +1600,14 @@ window.Script34 = function()
         var labelLines = doc.splitTextToSize(label.replace(/:$/, ""), inner);
         doc.text(labelLines, x + padX, y + 4.8);
 
-        var valueY = y + 4.8 + labelLines.length * 4.0 + 0.9;
+        var valueY = y + 4.8 + labelLines.length * 4.0 + 1.8;
         values.forEach(function (val) {
             doc.setFont("courier", "bold");
             doc.setFontSize(11);
             doc.setTextColor(theme.copper[0], theme.copper[1], theme.copper[2]);
             var valueLines = doc.splitTextToSize(val, inner);
             doc.text(valueLines, x + padX, valueY);
-            valueY += valueLines.length * 5.0 + 0.4;
+            valueY += valueLines.length * 5.5 + 1.2;
         });
 
         doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
@@ -1619,7 +1619,7 @@ window.Script34 = function()
 
     function measureStageCard(entries, width) {
         var headerH = 17;
-        var padBottom = 5;
+        var padBottom = 8;
         if (!stageHasValues(entries)) {
             return headerH + padBottom + 16;
         }
@@ -1665,7 +1665,7 @@ window.Script34 = function()
 
         var cursorY = y + 17;
         var rowIndex = 0;
-        var contentLimit = y + height - 2;
+        var contentLimit = y + height - 6;
 
         entries.forEach(function (entry) {
             var rowH = measureEntryRow(entry[0], entry[1], width, entry[2] === true);
@@ -1696,6 +1696,25 @@ window.Script34 = function()
         doc.setLineWidth(0.6);
         doc.line(margin, y + 2.5, margin + 42, y + 2.5);
         return y + 8;
+    }
+
+    function drawColorLegend(y, items) {
+        y = ensureSpace(8, y);
+        var lx = margin;
+        var swatch = 4.5;
+        var itemGap = 10;
+
+        items.forEach(function (item) {
+            doc.setFillColor(item.color[0], item.color[1], item.color[2]);
+            doc.roundedRect(lx, y - 3.2, swatch, swatch, 0.7, 0.7, "F");
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8.5);
+            doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+            doc.text(item.label, lx + swatch + 2.5, y + 0.3);
+            lx += swatch + 2.5 + doc.getTextWidth(item.label) + itemGap;
+        });
+
+        return y + 7;
     }
 
     function drawMetricTile(x, y, w, h, label, value, accent, useCourier) {
@@ -1843,12 +1862,15 @@ window.Script34 = function()
         startY = drawSectionTitle(
             startY,
             "Compression activity",
-            "Green = compressions on · Red = gap · Amber = long gap (≥10s)"
+            "Simulation-clock view of time on chest vs off chest"
         );
+        startY = drawColorLegend(startY, [
+            { label: "Compressions on", color: theme.success },
+            { label: "Off chest (gap)", color: theme.copper }
+        ]);
 
         var barH = 14;
-        var legendH = 8;
-        var boxH = 10 + barH + legendH + 8;
+        var boxH = 10 + barH + 8;
         startY = ensureSpace(boxH, startY);
 
         var boxW = pageWidth - margin * 2;
@@ -1880,7 +1902,7 @@ window.Script34 = function()
             var w = Math.max(0.6, x1 - x0);
             var color = theme.success;
             if (seg.type === "gap") {
-                color = seg.isLong ? theme.warn : theme.danger;
+                color = theme.copper;
             }
             doc.setFillColor(color[0], color[1], color[2]);
             doc.rect(x0, barY, w, barH, "F");
@@ -1896,24 +1918,7 @@ window.Script34 = function()
             }
         });
 
-        var legendY = barY + barH + 6;
-        var legendItems = [
-            { label: "on", color: theme.success },
-            { label: "gap", color: theme.danger },
-            { label: "long", color: theme.warn }
-        ];
-        var lx = barX;
-        legendItems.forEach(function (item) {
-            doc.setFillColor(item.color[0], item.color[1], item.color[2]);
-            doc.rect(lx, legendY - 2.5, 4.5, 4.5, "F");
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(8.5);
-            doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
-            doc.text(item.label, lx + 6, legendY + 1);
-            lx += 26;
-        });
-
-        return startY + boxH + 6;
+        return startY + boxH + 8;
     }
 
     function drawCompressionStats(startY) {
@@ -1936,35 +1941,7 @@ window.Script34 = function()
 
         startY += blockH;
 
-        var detailsText = pdfSafeText(cleanText(pauseDetails));
-        if (detailsText && detailsText !== "No completed compression interruptions recorded.") {
-            var boxW = pageWidth - margin * 2;
-            var pad = 6;
-            doc.setFont("courier", "normal");
-            doc.setFontSize(10);
-            var detailLines = doc.splitTextToSize(detailsText.replace(/<br\s*\/?>/gi, "\n"), boxW - pad * 2);
-            var boxH = 12 + detailLines.length * 5.0;
-            startY = ensureSpace(boxH + 4, startY);
-
-            doc.setFillColor(theme.tealTint[0], theme.tealTint[1], theme.tealTint[2]);
-            doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "F");
-            doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
-            doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "S");
-
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(9);
-            doc.setTextColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
-            doc.text("Time between compressions (each gap)", margin + pad, startY + 6.5);
-
-            doc.setFont("courier", "normal");
-            doc.setFontSize(10);
-            doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
-            doc.text(detailLines, margin + pad, startY + 12.5);
-
-            startY += boxH + 6;
-        }
-
-        return startY + 2;
+        return startY + 4;
     }
 
     function drawCompressionRound(x, y, width, round) {
