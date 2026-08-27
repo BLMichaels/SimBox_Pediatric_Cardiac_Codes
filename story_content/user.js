@@ -1709,69 +1709,109 @@ window.Script34 = function()
         var longest = gaps > 0 ? compressionGaps.longestClock : "00:00";
         var totalOff = gaps > 0 ? compressionGaps.totalClock : (cleanText(pauseTotalVar) || "00:00");
 
-        var items = [
-            { label: "Stages run", value: String(stagesRun) + " / 3", accent: theme.teal, courier: false },
-            { label: "Gaps", value: String(gaps || pauseCount || "0"), accent: theme.copper, courier: false },
-            { label: "Long gaps", value: String(longGaps), accent: theme.warn, courier: false },
-            { label: "Longest gap", value: longest, accent: theme.danger, courier: true },
-            { label: "Total off chest", value: totalOff, accent: theme.danger, courier: true }
+        var boxH = 15;
+        var boxW = pageWidth - margin * 2;
+        startY = ensureSpace(boxH + 4, startY);
+
+        var facts = [
+            { label: "Stages", value: String(stagesRun) + "/3" },
+            { label: "Gaps", value: String(gaps || pauseCount || "0") },
+            { label: "Long gaps", value: String(longGaps), warn: longGaps > 0 },
+            { label: "Longest", value: longest, warn: compressionGaps.longestSeconds >= LONG_GAP_SECONDS },
+            { label: "Off chest", value: totalOff }
         ];
+        var colW = boxW / facts.length;
 
-        var gap = 4;
-        var tileH = 18;
-        var tileW = (pageWidth - margin * 2 - gap * (items.length - 1)) / items.length;
-        startY = ensureSpace(tileH + 4, startY);
+        doc.setFillColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+        doc.roundedRect(margin, startY, boxW, boxH, 1.8, 1.8, "F");
 
-        items.forEach(function (item, i) {
-            drawMetricTile(
-                margin + i * (tileW + gap),
-                startY,
-                tileW,
-                tileH,
-                item.label,
-                item.value,
-                item.accent,
-                item.courier
-            );
+        facts.forEach(function (fact, i) {
+            var cx = margin + colW * i + colW / 2;
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(6);
+            doc.setTextColor(160, 170, 180);
+            doc.text(fact.label.toUpperCase(), cx, startY + 5, { align: "center" });
+            doc.setFont("courier", "bold");
+            doc.setFontSize(10);
+            if (fact.warn) {
+                doc.setTextColor(theme.warn[0] + 40, theme.warn[1] + 40, theme.warn[2]);
+            } else {
+                doc.setTextColor(255, 255, 255);
+            }
+            doc.text(String(fact.value), cx, startY + 11.5, { align: "center" });
+            if (i < facts.length - 1) {
+                doc.setDrawColor(70, 80, 92);
+                doc.setLineWidth(0.2);
+                doc.line(margin + colW * (i + 1), startY + 3, margin + colW * (i + 1), startY + boxH - 3);
+            }
         });
 
-        return startY + tileH + 6;
+        return startY + boxH + 5;
     }
 
     function drawKeyIntervals(startY) {
         var items = [
-            { label: "First compressions", value: firstClock(two1), accent: theme.success },
-            { label: "Pads", value: firstClock(four1), accent: theme.teal },
-            { label: "Epinephrine", value: firstClock(seven1), accent: theme.copper },
-            { label: "Defibrillation", value: firstClock(eight1), accent: theme.danger },
-            { label: "ROSC announced", value: firstClock(two3), accent: theme.success }
+            { label: "First CPR", value: firstClock(two1) },
+            { label: "Pads", value: firstClock(four1) },
+            { label: "Epi", value: firstClock(seven1) },
+            { label: "Defib", value: firstClock(eight1) },
+            { label: "ROSC", value: firstClock(two3) }
         ];
 
         startY = drawSectionTitle(
             startY,
             "Key intervals",
-            "Simulation-clock times for critical actions"
+            "Simulation-clock time to critical actions"
         );
 
-        var gap = 4;
-        var tileH = 20;
-        var tileW = (pageWidth - margin * 2 - gap * (items.length - 1)) / items.length;
-        startY = ensureSpace(tileH + 4, startY);
+        var boxH = 22;
+        var boxW = pageWidth - margin * 2;
+        var padX = 10;
+        startY = ensureSpace(boxH + 4, startY);
+
+        doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "F");
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "S");
+
+        var innerW = boxW - padX * 2;
+        var step = items.length > 1 ? innerW / (items.length - 1) : 0;
+        var lineY = startY + 9;
+
+        doc.setDrawColor(theme.teal[0], theme.teal[1], theme.teal[2]);
+        doc.setLineWidth(1.1);
+        doc.line(margin + padX, lineY, margin + padX + innerW, lineY);
 
         items.forEach(function (item, i) {
-            drawMetricTile(
-                margin + i * (tileW + gap),
-                startY,
-                tileW,
-                tileH,
-                item.label,
-                item.value,
-                item.accent,
-                true
+            var x = margin + padX + step * i;
+            var has = item.value && item.value !== "—";
+
+            doc.setFillColor(
+                has ? theme.teal[0] : theme.border[0],
+                has ? theme.teal[1] : theme.border[1],
+                has ? theme.teal[2] : theme.border[2]
             );
+            doc.circle(x, lineY, 2.1, "F");
+            doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+            doc.circle(x, lineY, 0.9, "F");
+
+            doc.setFont("courier", "bold");
+            doc.setFontSize(9);
+            doc.setTextColor(
+                has ? theme.ink[0] : theme.inkSoft[0],
+                has ? theme.ink[1] : theme.inkSoft[1],
+                has ? theme.ink[2] : theme.inkSoft[2]
+            );
+            doc.text(has ? item.value : "--:--", x, startY + 16.2, { align: "center" });
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(6.5);
+            doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+            doc.text(item.label, x, startY + 19.8, { align: "center" });
         });
 
-        return startY + tileH + 8;
+        return startY + boxH + 6;
     }
 
     function drawCompressionVisualBar(startY) {
@@ -2057,18 +2097,31 @@ window.Script34 = function()
     y = drawGlanceStrip(y, stageSets);
     y = drawKeyIntervals(y);
 
-    y = drawSectionTitle(y, "Code timeline by stage", "Clinical actions and simulation clock timestamps");
-
     var stageHeights = stageSets.map(function (entries) {
         return measureStageCard(entries, cardWidth);
     });
     var stageCardHeight = Math.max.apply(null, stageHeights);
-    y = ensureSpace(stageCardHeight + 4, y);
+    // Keep section title + stage cards together (avoid orphan title / empty page)
+    var stageBlockH = 14 + stageCardHeight;
+    if (y + stageBlockH > contentBottom) {
+        doc.addPage();
+        addHeader();
+        y = contentTop;
+    }
+
+    y = drawSectionTitle(y, "Code timeline by stage", "Clinical actions and simulation clock timestamps");
 
     stageThemes.forEach(function (st, i) {
         drawStageCard(st, stageSets[i], margin + (cardWidth + cardGap) * i, y, cardWidth, stageCardHeight);
     });
-    y = y + stageCardHeight + 10;
+    y = y + stageCardHeight + 8;
+
+    // Start compression analysis on a fresh page when little room remains
+    if (y + 55 > contentBottom) {
+        doc.addPage();
+        addHeader();
+        y = contentTop;
+    }
 
     y = drawCompressionVisualBar(y);
     y = drawCompressionStats(y);
