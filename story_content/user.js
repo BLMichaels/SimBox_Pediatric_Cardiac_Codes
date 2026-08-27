@@ -1154,22 +1154,44 @@ window.Script34 = function()
     var pageWidth = doc.internal.pageSize.getWidth();
     var pageHeight = doc.internal.pageSize.getHeight();
 
-    // Page layout settings
-    var margin = 12;
-    var headerHeight = 15;
-    var footerHeight = 10;
-    var contentTop = 24;
-    var contentBottom = pageHeight - footerHeight - 5;
+    // Design system — clinical briefing document (matches SimBox dashboard tone)
+    var theme = {
+        paper: [251, 248, 242],
+        ink: [28, 36, 48],
+        inkSoft: [96, 106, 116],
+        teal: [31, 106, 102],
+        tealDark: [22, 78, 75],
+        tealTint: [232, 244, 243],
+        copper: [154, 79, 44],
+        danger: [143, 45, 45],
+        dangerTint: [252, 236, 236],
+        success: [44, 107, 63],
+        successTint: [234, 246, 238],
+        border: [218, 212, 200],
+        white: [255, 255, 255]
+    };
 
-    var cardGap = 6;
-    var cardWidth = (pageWidth - (margin * 2) - (cardGap * 2)) / 3;
+    var margin = 14;
+    var headerHeight = 20;
+    var footerHeight = 11;
+    var contentTop = 28;
+    var contentBottom = pageHeight - footerHeight - 6;
+    var cardGap = 7;
+    var cardWidth = (pageWidth - margin * 2 - cardGap * 2) / 3;
 
-    var titleColor = [45, 45, 45];
-    var stageOneColor = [57, 91, 116];
-    var stageTwoColor = [75, 117, 162];
-    var stageThreeColor = [73, 111, 89];
-    var borderColor = [190, 190, 190];
-    var lightFill = [248, 248, 248];
+    var stageThemes = [
+        { title: "Stage One", subtitle: "Initial response", accent: theme.teal, tint: theme.tealTint },
+        { title: "Stage Two", subtitle: "Optional continuation", accent: [75, 117, 162], tint: [236, 242, 249] },
+        { title: "Stage Three", subtitle: "ROSC & handoff", accent: theme.success, tint: theme.successTint }
+    ];
+
+    var generatedAt = new Date().toLocaleString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+    });
 
     function cleanText(value) {
         return String(value || "")
@@ -1183,114 +1205,67 @@ window.Script34 = function()
             .trim();
     }
 
+    function splitValues(raw) {
+        var text = cleanText(raw);
+        if (!text) return [];
+        return text
+            .split(/\n|\|/)
+            .map(function (part) { return part.trim(); })
+            .filter(Boolean);
+    }
+
     function normalizeCompressionLog(value) {
         var text = cleanText(value);
-
-        if (!text) {
-            return "No compression timestamps recorded.";
-        }
-
-        // Converts separators from Storyline variables into readable PDF lines.
+        if (!text) return ["No compression timestamps recorded."];
         return text
             .replace(/\s*\|\s*/g, "\n")
             .replace(/\s*(Compressions off:)/gi, "\n$1")
             .replace(/\s*(Compressions on:)/gi, "\n$1")
-            .replace(/\n{2,}/g, "\n")
-            .trim();
+            .split("\n")
+            .map(function (line) { return line.trim(); })
+            .filter(Boolean);
+    }
+
+    function paintPageBackground() {
+        doc.setFillColor(theme.paper[0], theme.paper[1], theme.paper[2]);
+        doc.rect(0, 0, pageWidth, pageHeight, "F");
     }
 
     function addHeader() {
-        doc.setFillColor(titleColor[0], titleColor[1], titleColor[2]);
+        paintPageBackground();
+
+        doc.setFillColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
         doc.rect(0, 0, pageWidth, headerHeight, "F");
 
+        doc.setFillColor(theme.teal[0], theme.teal[1], theme.teal[2]);
+        doc.rect(0, headerHeight - 2.5, pageWidth, 2.5, "F");
+
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(16);
+        doc.setFontSize(13);
         doc.setTextColor(255, 255, 255);
-        doc.text("Simulation Summary / Debrief Report", margin, 10);
+        doc.text("Pediatric Cardiac Codes", margin, 9);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(220, 236, 235);
+        doc.text("Simulation debrief report", margin, 14.5);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(210, 228, 227);
+        doc.text(generatedAt, pageWidth - margin, 11, { align: "right" });
     }
 
     function addFooter(pageNumber, totalPages) {
-        doc.setDrawColor(210, 210, 210);
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.setLineWidth(0.3);
         doc.line(margin, pageHeight - footerHeight, pageWidth - margin, pageHeight - footerHeight);
 
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(8);
-        doc.setTextColor(105, 105, 105);
-
-        doc.text(
-            "Simulation debrief report • Page " + pageNumber + " of " + totalPages,
-            margin,
-            pageHeight - 4
-        );
-    }
-
-    function calculateStageHeight(entries, width) {
-        var padding = 5;
-        var rowGap = 3;
-        var headerSpace = 11;
-        var labelGap = 4.2;
-        var lineHeight = 4.2;
-        var height = padding + headerSpace;
-        var textWidth = width - padding * 2;
-
-        entries.forEach(function (entry) {
-            var value = cleanText(entry[1]);
-            if (!value) return;
-
-            height += labelGap;
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(8.5);
-            var valueLines = doc.splitTextToSize(value, textWidth);
-            height += valueLines.length * lineHeight + rowGap;
-        });
-
-        return height + padding;
-    }
-
-    function drawStageCard(title, entries, x, y, width, height, accentColor) {
-        var padding = 5;
-        var rowGap = 3;
-        var labelGap = 4.2;
-        var lineHeight = 4.2;
-        var textWidth = width - padding * 2;
-        var currentY = y + 16;
-        var contentLimit = y + height - padding;
-
-        doc.setFillColor(lightFill[0], lightFill[1], lightFill[2]);
-        doc.roundedRect(x, y, width, height, 2, 2, "F");
-
-        doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-        doc.setLineWidth(0.35);
-        doc.roundedRect(x, y, width, height, 2, 2, "S");
-
-        doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
-        doc.roundedRect(x, y, width, 10, 2, 2, "F");
-        doc.rect(x, y + 7, width, 3, "F");
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(11);
-        doc.setTextColor(255, 255, 255);
-        doc.text(title, x + padding, y + 6.7);
-
-        entries.forEach(function (entry) {
-            var label = entry[0];
-            var value = cleanText(entry[1]);
-            if (!value) return;
-            if (currentY > contentLimit - 6) return;
-
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(8.5);
-            doc.setTextColor(55, 55, 55);
-            doc.text(label, x + padding, currentY);
-            currentY += labelGap;
-
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(8.5);
-            doc.setTextColor(0, 0, 0);
-            var valueLines = doc.splitTextToSize(value, textWidth);
-            doc.text(valueLines, x + padding, currentY);
-            currentY += valueLines.length * lineHeight + rowGap;
-        });
+        doc.setFontSize(7.5);
+        doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+        doc.text("SimBox · Anonymous session summary · Not a medical record", margin, pageHeight - 4.5);
+        doc.text("Page " + pageNumber + " of " + totalPages, pageWidth - margin, pageHeight - 4.5, { align: "right" });
     }
 
     function ensureSpace(requiredHeight, currentY) {
@@ -1302,250 +1277,347 @@ window.Script34 = function()
         return currentY;
     }
 
-    function drawCompressionLog(startY) {
-        var logText = normalizeCompressionLog(compressions);
-        var x = margin;
-        var width = pageWidth - (margin * 2);
-        var padding = 6;
+    function measureEntryRow(label, rawValue, width) {
+        var padX = 6;
+        var inner = width - padX * 2;
+        var values = splitValues(rawValue);
+        if (!values.length) return 0;
 
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(9.5);
-        var lines = doc.splitTextToSize(logText, width - (padding * 2));
-
-        var titleHeight = 12;
-        var lineHeight = 5;
-        var neededHeight = titleHeight + (lines.length * lineHeight) + (padding * 2);
-
-        startY = ensureSpace(Math.min(neededHeight, 45), startY);
-
-        // If log is short, use a single bordered box.
-        if (neededHeight <= contentBottom - startY) {
-            doc.setFillColor(252, 252, 252);
-            doc.roundedRect(x, startY, width, neededHeight, 2, 2, "F");
-
-            doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-            doc.roundedRect(x, startY, width, neededHeight, 2, 2, "S");
-
-            doc.setFillColor(titleColor[0], titleColor[1], titleColor[2]);
-            doc.roundedRect(x, startY, width, titleHeight, 2, 2, "F");
-            doc.rect(x, startY + 9, width, 3, "F");
-
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(11);
-            doc.setTextColor(255, 255, 255);
-            doc.text("Compressions Log", x + padding, startY + 7.5);
-
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(9.5);
-            doc.setTextColor(0, 0, 0);
-            doc.text(lines, x + padding, startY + titleHeight + 6);
-
-            return;
-        }
-
-        // Long logs continue onto additional pages.
-        var lineIndex = 0;
-        var firstPage = true;
-
-        while (lineIndex < lines.length) {
-            if (!firstPage) {
-                doc.addPage();
-                addHeader();
-                startY = contentTop;
-            }
-
-            var availableHeight = contentBottom - startY;
-            var boxHeight = availableHeight;
-            var availableLines = Math.floor((boxHeight - titleHeight - (padding * 2)) / lineHeight);
-
-            if (availableLines < 1) {
-                doc.addPage();
-                addHeader();
-                startY = contentTop;
-                availableHeight = contentBottom - startY;
-                boxHeight = availableHeight;
-                availableLines = Math.floor((boxHeight - titleHeight - (padding * 2)) / lineHeight);
-            }
-
-            var chunk = lines.slice(lineIndex, lineIndex + availableLines);
-            var actualHeight = titleHeight + (chunk.length * lineHeight) + (padding * 2);
-
-            doc.setFillColor(252, 252, 252);
-            doc.roundedRect(x, startY, width, actualHeight, 2, 2, "F");
-
-            doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-            doc.roundedRect(x, startY, width, actualHeight, 2, 2, "S");
-
-            doc.setFillColor(titleColor[0], titleColor[1], titleColor[2]);
-            doc.roundedRect(x, startY, width, titleHeight, 2, 2, "F");
-            doc.rect(x, startY + 9, width, 3, "F");
-
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(11);
-            doc.setTextColor(255, 255, 255);
-
-            doc.text(
-                firstPage ? "Compressions Log" : "Compressions Log (continued)",
-                x + padding,
-                startY + 7.5
-            );
-
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(9.5);
-            doc.setTextColor(0, 0, 0);
-            doc.text(chunk, x + padding, startY + titleHeight + 6);
-
-            lineIndex += chunk.length;
-            firstPage = false;
-        }
+        doc.setFontSize(7.5);
+        var labelLines = doc.splitTextToSize(label.replace(/:$/, ""), inner);
+        var labelH = labelLines.length * 3.4;
+        var valueH = values.length * 4.6 + 1;
+        return Math.max(labelH + valueH + 5, 11);
     }
 
-    function drawCompressionStats(startY) {
-        var x = margin;
-        var width = pageWidth - margin * 2;
-        var padding = 6;
-        var stats = [
-            ["Interruptions:", String(pauseCount || "0")],
-            ["Total time off:", cleanText(pauseTotal) || "00:00"],
-            ["Average pause:", cleanText(pauseAverage) || "00:00"]
-        ];
-        var detailsText = cleanText(pauseDetails);
-        var lineHeight = 4.5;
-        var boxHeight = 28;
-        if (detailsText && detailsText !== "No completed compression interruptions recorded.") {
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(9);
-            var detailLines = doc.splitTextToSize(detailsText, width - padding * 2);
-            boxHeight += detailLines.length * lineHeight + 4;
+    function drawEntryRow(x, y, width, label, rawValue, rowIndex) {
+        var padX = 6;
+        var inner = width - padX * 2;
+        var values = splitValues(rawValue);
+        if (!values.length) return 0;
+
+        var rowH = measureEntryRow(label, rawValue, width);
+
+        if (rowIndex % 2 === 0) {
+            doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        } else {
+            doc.setFillColor(248, 246, 242);
         }
+        doc.rect(x + 1.5, y, width - 3, rowH, "F");
 
-        startY = ensureSpace(boxHeight + 6, startY);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+        var labelLines = doc.splitTextToSize(label.replace(/:$/, ""), inner);
+        doc.text(labelLines, x + padX, y + 4.2);
 
-        doc.setFillColor(252, 252, 252);
-        doc.roundedRect(x, startY, width, boxHeight, 2, 2, "F");
-        doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
-        doc.roundedRect(x, startY, width, boxHeight, 2, 2, "S");
+        var valueY = y + 4.2 + labelLines.length * 3.4 + 0.8;
+        values.forEach(function (val, i) {
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(9);
+            doc.setTextColor(theme.copper[0], theme.copper[1], theme.copper[2]);
+            doc.text(val, x + padX, valueY + i * 4.6);
+        });
+
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.setLineWidth(0.15);
+        doc.line(x + padX, y + rowH, x + width - padX, y + rowH);
+
+        return rowH;
+    }
+
+    function measureStageCard(entries, width) {
+        var headerH = 16;
+        var padBottom = 5;
+        var total = headerH + padBottom;
+        var rowIndex = 0;
+        entries.forEach(function (entry) {
+            var h = measureEntryRow(entry[0], entry[1], width);
+            if (h > 0) {
+                total += h;
+                rowIndex += 1;
+            }
+        });
+        return total;
+    }
+
+    function drawStageCard(stageTheme, entries, x, y, width, height) {
+        doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        doc.roundedRect(x, y, width, height, 2.5, 2.5, "F");
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.setLineWidth(0.35);
+        doc.roundedRect(x, y, width, height, 2.5, 2.5, "S");
+
+        doc.setFillColor(stageTheme.accent[0], stageTheme.accent[1], stageTheme.accent[2]);
+        doc.roundedRect(x, y, width, 13, 2.5, 2.5, "F");
+        doc.rect(x, y + 10, width, 3, "F");
+
+        doc.setFillColor(stageTheme.tint[0], stageTheme.tint[1], stageTheme.tint[2]);
+        doc.rect(x + 1.5, y + 13, width - 3, 3, "F");
 
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
-        doc.setTextColor(45, 45, 45);
-        doc.text("Compression interruption summary", x + padding, startY + 7);
+        doc.setTextColor(255, 255, 255);
+        doc.text(stageTheme.title, x + 6, y + 7.2);
 
-        var rowY = startY + 13;
-        stats.forEach(function (row) {
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(9);
-            doc.setTextColor(55, 55, 55);
-            doc.text(row[0], x + padding, rowY);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(0, 0, 0);
-            doc.text(row[1], x + padding + 38, rowY);
-            rowY += lineHeight;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(240, 248, 247);
+        doc.text(stageTheme.subtitle, x + 6, y + 11);
+
+        var cursorY = y + 16;
+        var rowIndex = 0;
+        var contentLimit = y + height - 4;
+
+        entries.forEach(function (entry) {
+            if (cursorY >= contentLimit - 8) return;
+            var rowH = drawEntryRow(x, cursorY, width, entry[0], entry[1], rowIndex);
+            if (rowH <= 0) return;
+            cursorY += rowH;
+            rowIndex += 1;
         });
-
-        if (detailsText && detailsText !== "No completed compression interruptions recorded.") {
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(8.5);
-            doc.setTextColor(0, 0, 0);
-            var lines = doc.splitTextToSize(detailsText, width - padding * 2);
-            doc.text(lines, x + padding, rowY + 2);
-        }
-
-        return startY + boxHeight + 6;
     }
 
-    // Build the stages as structured data.
-    var stageOne = [
-        ["Begin simulation:", simBegin1],
-        ["Initial pulse check:", one1],
-        ["Initiated compressions:", two1],
-        ["Initiated BVM:", three1],
-        ["Applied pads:", four1],
-        ["IV/IO access:", five1],
-        ["Rhythm/pulse check:", six1],
-        ["Epinephrine administered:", seven1],
-        ["Defib delivered:", eight1]
-    ];
+    function drawSectionTitle(y, title, subtitle) {
+        y = ensureSpace(12, y);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+        doc.text(title, margin, y);
 
-    var stageTwo = [
-        ["Begin Stage 2:", simBegin2],
-        ["Rhythm/pulse check:", one2],
-        ["Epinephrine administered:", two2],
-        ["Defib delivered:", three2],
-        ["Switch compressors:", four2],
-        ["Continuous compressions:", five2],
-        ["Breath every 2–3 seconds:", six2]
-    ];
+        if (subtitle) {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+            doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+            doc.text(subtitle, margin, y + 4.5);
+            y += 4.5;
+        }
 
-    var stageThree = [
-        ["Begin Stage 3:", simBegin3],
-        ["Checked pulse:", one3],
-        ["Announced ROSC:", two3],
-        ["Stopped compressions:", three3],
-        ["Post-resuscitation care:", four3],
-        ["Called for transfer:", five3],
-        ["Clicked Go to Debrief:", debrief]
-    ];
+        doc.setDrawColor(theme.teal[0], theme.teal[1], theme.teal[2]);
+        doc.setLineWidth(0.6);
+        doc.line(margin, y + 2.5, margin + 42, y + 2.5);
+        return y + 8;
+    }
+
+    function drawMetricTile(x, y, w, h, label, value, accent) {
+        doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        doc.roundedRect(x, y, w, h, 2, 2, "F");
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.roundedRect(x, y, w, h, 2, 2, "S");
+
+        doc.setFillColor(accent[0], accent[1], accent[2]);
+        doc.roundedRect(x, y, w, 3, 2, 2, "F");
+        doc.rect(x, y + 2, w, 1.2, "F");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+        doc.text(String(value || "—"), x + w / 2, y + 11, { align: "center" });
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+        doc.text(label, x + w / 2, y + 16, { align: "center" });
+    }
+
+    function drawCompressionStats(startY) {
+        var tileGap = 6;
+        var tileH = 20;
+        var tileW = (pageWidth - margin * 2 - tileGap * 2) / 3;
+        var blockH = tileH + 8;
+
+        startY = drawSectionTitle(startY, "Compression quality", "Interruption summary from the simulation clock");
+
+        startY = ensureSpace(blockH, startY);
+
+        drawMetricTile(margin, startY, tileW, tileH, "Interruptions", pauseCount || "0", theme.copper);
+        drawMetricTile(margin + tileW + tileGap, startY, tileW, tileH, "Total time off", cleanText(pauseTotal) || "00:00", theme.danger);
+        drawMetricTile(margin + (tileW + tileGap) * 2, startY, tileW, tileH, "Average pause", cleanText(pauseAverage) || "00:00", theme.teal);
+
+        startY += blockH;
+
+        var detailsText = cleanText(pauseDetails);
+        if (detailsText && detailsText !== "No completed compression interruptions recorded.") {
+            var boxW = pageWidth - margin * 2;
+            var pad = 6;
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8.5);
+            var detailLines = doc.splitTextToSize(detailsText.replace(/<br\s*\/?>/gi, "\n"), boxW - pad * 2);
+            var boxH = 10 + detailLines.length * 4.2;
+            startY = ensureSpace(boxH + 4, startY);
+
+            doc.setFillColor(theme.tealTint[0], theme.tealTint[1], theme.tealTint[2]);
+            doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "F");
+            doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+            doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "S");
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8);
+            doc.setTextColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
+            doc.text("Interruption breakdown", margin + pad, startY + 5.5);
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8.5);
+            doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+            doc.text(detailLines, margin + pad, startY + 10.5);
+
+            startY += boxH + 6;
+        }
+
+        return startY + 2;
+    }
+
+    function drawCompressionLogLine(x, y, line, maxWidth) {
+        var lower = line.toLowerCase();
+        var isOff = lower.indexOf("compressions off") !== -1;
+        var isOn = lower.indexOf("compressions on") !== -1;
+
+        if (isOff) {
+            doc.setFillColor(theme.dangerTint[0], theme.dangerTint[1], theme.dangerTint[2]);
+            doc.roundedRect(x, y - 3.2, maxWidth, 5.2, 1, 1, "F");
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8.5);
+            doc.setTextColor(theme.danger[0], theme.danger[1], theme.danger[2]);
+        } else if (isOn) {
+            doc.setFillColor(theme.successTint[0], theme.successTint[1], theme.successTint[2]);
+            doc.roundedRect(x, y - 3.2, maxWidth, 5.2, 1, 1, "F");
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8.5);
+            doc.setTextColor(theme.success[0], theme.success[1], theme.success[2]);
+        } else {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8.5);
+            doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+        }
+
+        doc.text(line, x + 2, y);
+        return 5.4;
+    }
+
+    function drawCompressionLog(startY) {
+        var lines = normalizeCompressionLog(compressions);
+        var boxW = pageWidth - margin * 2;
+        var pad = 7;
+        var lineHeight = 5.4;
+        var headerH = 11;
+        var innerW = boxW - pad * 2;
+
+        startY = drawSectionTitle(startY, "Compressions timeline", "Off/on events in simulation time order");
+
+        var lineIndex = 0;
+        var firstChunk = true;
+
+        while (lineIndex < lines.length) {
+            var available = contentBottom - startY - headerH - pad * 2;
+            var maxLines = Math.max(1, Math.floor(available / lineHeight));
+            var chunk = lines.slice(lineIndex, lineIndex + maxLines);
+            var boxH = headerH + chunk.length * lineHeight + pad * 2;
+
+            if (boxH > contentBottom - startY && lineIndex > 0) {
+                doc.addPage();
+                addHeader();
+                startY = contentTop;
+                firstChunk = false;
+                continue;
+            }
+
+            startY = ensureSpace(Math.min(boxH, contentBottom - startY), startY);
+
+            doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+            doc.roundedRect(margin, startY, boxW, boxH, 2.5, 2.5, "F");
+            doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+            doc.roundedRect(margin, startY, boxW, boxH, 2.5, 2.5, "S");
+
+            doc.setFillColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+            doc.roundedRect(margin, startY, boxW, headerH, 2.5, 2.5, "F");
+            doc.rect(margin, startY + 8, boxW, 3, "F");
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(9);
+            doc.setTextColor(255, 255, 255);
+            doc.text(firstChunk ? "Event log" : "Event log (continued)", margin + pad, startY + 7);
+
+            var cursorY = startY + headerH + 5;
+            chunk.forEach(function (line) {
+                var h = drawCompressionLogLine(margin + pad, cursorY, line, innerW - 4);
+                cursorY += h;
+            });
+
+            lineIndex += chunk.length;
+            firstChunk = false;
+            startY = startY + boxH + 6;
+
+            if (lineIndex < lines.length) {
+                doc.addPage();
+                addHeader();
+                startY = contentTop;
+            }
+        }
+
+        return startY;
+    }
 
     // Create report.
     addHeader();
 
-    var stageOneHeight = calculateStageHeight(stageOne, cardWidth);
-    var stageTwoHeight = calculateStageHeight(stageTwo, cardWidth);
-    var stageThreeHeight = calculateStageHeight(stageThree, cardWidth);
+    var stageOne = [
+        ["Begin simulation", simBegin1],
+        ["Initial pulse check", one1],
+        ["Initiated compressions", two1],
+        ["Initiated BVM", three1],
+        ["Applied pads", four1],
+        ["IV/IO access", five1],
+        ["Rhythm/pulse check", six1],
+        ["Epinephrine administered", seven1],
+        ["Defib delivered", eight1]
+    ];
 
-    var stageCardHeight = Math.max(stageOneHeight, stageTwoHeight, stageThreeHeight);
-    var stageY = contentTop;
+    var stageTwo = [
+        ["Begin Stage 2", simBegin2],
+        ["Rhythm/pulse check", one2],
+        ["Epinephrine administered", two2],
+        ["Defib delivered", three2],
+        ["Switch compressors", four2],
+        ["Continuous compressions", five2],
+        ["Breath every 2–3 seconds", six2]
+    ];
 
-    // If stages won't fit above the compression section, move compressions to page 2.
-    var compressionStartY = stageY + stageCardHeight + 8;
-    if (compressionStartY > contentBottom - 40) {
-        drawStageCard("Stage One", stageOne, margin, stageY, cardWidth, stageCardHeight, stageOneColor);
-        drawStageCard(
-            "Stage Two (Optional)",
-            stageTwo,
-            margin + cardWidth + cardGap,
-            stageY,
-            cardWidth,
-            stageCardHeight,
-            stageTwoColor
-        );
-        drawStageCard(
-            "Stage Three",
-            stageThree,
-            margin + (cardWidth + cardGap) * 2,
-            stageY,
-            cardWidth,
-            stageCardHeight,
-            stageThreeColor
-        );
+    var stageThree = [
+        ["Begin Stage 3", simBegin3],
+        ["Checked pulse", one3],
+        ["Announced ROSC", two3],
+        ["Stopped compressions", three3],
+        ["Post-resuscitation care", four3],
+        ["Called for transfer", five3],
+        ["Clicked Go to Debrief", debrief]
+    ];
+
+    var stageSets = [stageOne, stageTwo, stageThree];
+    var stageY = drawSectionTitle(contentTop, "Code timeline by stage", "Clinical actions and simulation clock timestamps");
+
+    var stageHeights = stageSets.map(function (entries) {
+        return measureStageCard(entries, cardWidth);
+    });
+    var stageCardHeight = Math.max.apply(null, stageHeights);
+
+    if (stageY + stageCardHeight > contentBottom - 36) {
+        stageThemes.forEach(function (st, i) {
+            drawStageCard(st, stageSets[i], margin + (cardWidth + cardGap) * i, stageY, cardWidth, stageCardHeight);
+        });
         doc.addPage();
         addHeader();
-        compressionStartY = contentTop;
+        var compressionStartY = contentTop;
+        compressionStartY = drawCompressionStats(compressionStartY);
+        drawCompressionLog(compressionStartY);
     } else {
-        drawStageCard("Stage One", stageOne, margin, stageY, cardWidth, stageCardHeight, stageOneColor);
-        drawStageCard(
-            "Stage Two (Optional)",
-            stageTwo,
-            margin + cardWidth + cardGap,
-            stageY,
-            cardWidth,
-            stageCardHeight,
-            stageTwoColor
-        );
-        drawStageCard(
-            "Stage Three",
-            stageThree,
-            margin + (cardWidth + cardGap) * 2,
-            stageY,
-            cardWidth,
-            stageCardHeight,
-            stageThreeColor
-        );
+        stageThemes.forEach(function (st, i) {
+            drawStageCard(st, stageSets[i], margin + (cardWidth + cardGap) * i, stageY, cardWidth, stageCardHeight);
+        });
+        var compressionStartY = stageY + stageCardHeight + 10;
+        compressionStartY = drawCompressionStats(compressionStartY);
+        drawCompressionLog(compressionStartY);
     }
-
-    compressionStartY = drawCompressionStats(compressionStartY);
-    drawCompressionLog(compressionStartY);
 
     // Add footer after every page is created.
     var totalPages = doc.getNumberOfPages();
