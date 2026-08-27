@@ -688,10 +688,10 @@ window.Script21 = function()
 
     var details = count > 0
         ? pauses.map(function (pause, index) {
-            return "Interruption " + (index + 1) + ": " +
-                formatTime(pause.start) + "–" +
+            return "Gap " + (index + 1) + ": " +
+                formatTime(pause.start) + "-" +
                 formatTime(pause.end) + " = " +
-                formatTime(pause.duration);
+                formatTime(pause.duration) + " between compressions";
         }).join("<br>")
         : "No completed compression interruptions recorded.";
 
@@ -1133,10 +1133,11 @@ window.Script34 = function()
 
     var compressions = player.GetVar("compressionsString") || "";
     var debrief = player.GetVar("Debrief") || "";
-    var pauseCount = player.GetVar("CompressionPauseCount") || "";
-    var pauseTotal = player.GetVar("CompressionPauseTotal") || "";
-    var pauseAverage = player.GetVar("CompressionPauseAverage") || "";
-    var pauseDetails = player.GetVar("CompressionPauseDetails") || "";
+    // Storyline vars from Script21 (fallback if log parse finds nothing)
+    var pauseCountVar = player.GetVar("CompressionPauseCount") || "";
+    var pauseTotalVar = player.GetVar("CompressionPauseTotal") || "";
+    var pauseAverageVar = player.GetVar("CompressionPauseAverage") || "";
+    var pauseDetailsVar = player.GetVar("CompressionPauseDetails") || "";
 
     // Confirm that jsPDF is available in story.html
     if (!window.jspdf || !window.jspdf.jsPDF) {
@@ -1167,17 +1168,22 @@ window.Script34 = function()
         dangerTint: [252, 236, 236],
         success: [44, 107, 63],
         successTint: [234, 246, 238],
+        warn: [180, 120, 40],
+        warnTint: [255, 244, 220],
         border: [218, 212, 200],
         white: [255, 255, 255]
     };
 
+    var LONG_GAP_SECONDS = 10;
     var margin = 14;
-    var headerHeight = 20;
+    var headerHeight = 22;
     var footerHeight = 11;
-    var contentTop = 28;
+    var contentTop = 30;
     var contentBottom = pageHeight - footerHeight - 6;
     var cardGap = 7;
     var cardWidth = (pageWidth - margin * 2 - cardGap * 2) / 3;
+    var logoW = 34;
+    var logoH = 14.3;
 
     var stageThemes = [
         { title: "Stage One", subtitle: "Initial response", accent: theme.teal, tint: theme.tealTint },
@@ -1200,9 +1206,30 @@ window.Script34 = function()
             .replace(/<[^>]*>/g, "")
             .replace(/&nbsp;/gi, " ")
             .replace(/&amp;/gi, "&")
+            .replace(/&lt;/gi, "<")
+            .replace(/&gt;/gi, ">")
+            .replace(/&quot;/gi, "\"")
+            .replace(/&#39;/gi, "'")
             .replace(/[ \t]+\n/g, "\n")
             .replace(/\n{3,}/g, "\n\n")
             .trim();
+    }
+
+    function pdfSafeText(value) {
+        return String(value || "")
+            .replace(/[\u2013\u2014\u2212]/g, "-")
+            .replace(/\u2026/g, "...");
+    }
+
+    function formatDisplayValues(rawValue, keepFullDate) {
+        return splitValues(rawValue).map(function (val) {
+            var text = pdfSafeText(val);
+            if (keepFullDate) return text;
+            var clockMatch = text.match(/(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)$/i);
+            if (clockMatch) return clockMatch[1].trim();
+            if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(text)) return text;
+            return text;
+        });
     }
 
     function splitValues(raw) {
@@ -1214,6 +1241,181 @@ window.Script34 = function()
             .filter(Boolean);
     }
 
+    function clockToSeconds(clock) {
+        var parts = String(clock || "").trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (!parts) return null;
+        if (parts[3] != null) {
+            return Number(parts[1]) * 3600 + Number(parts[2]) * 60 + Number(parts[3]);
+        }
+        return Number(parts[1]) * 60 + Number(parts[2]);
+    }
+
+    function formatClock(totalSeconds) {
+        totalSeconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
+        var minutes = Math.floor(totalSeconds / 60);
+        var seconds = totalSeconds % 60;
+        return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+    }
+
+    function firstClock(rawValue) {
+        var values = formatDisplayValues(rawValue, false);
+        if (!values.length) return "--:--";
+        var clock = values[0].match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+        return clock ? clock[1] : "--:--";
+    }
+
+    function stageHasValues(entries) {
+        return entries.some(function (entry) {
+            return formatDisplayValues(entry[1], entry[2] === true).length > 0;
+        });
+    }
+
+    /** Pair each Compressions off → on and compute time between compressions. */
+    function calculateCompressionGaps(rawLog) {
+        var text = cleanText(rawLog);
+        var eventPattern = /Compressions\s+(off|on):\s*(\d{1,2}:\d{2}(?::\d{2})?)/gi;
+        var match;
+        var offStartedAt = null;
+        var pauses = [];
+
+        while ((match = eventPattern.exec(text)) !== null) {
+            var eventType = match[1].toLowerCase();
+            var eventSeconds = clockToSeconds(match[2]);
+            if (eventSeconds == null) continue;
+
+            if (eventType === "off" && offStartedAt === null) {
+                offStartedAt = eventSeconds;
+            } else if (eventType === "on" && offStartedAt !== null) {
+                var duration = eventSeconds - offStartedAt;
+                if (duration >= 0) {
+                    pauses.push({
+                        start: offStartedAt,
+                        end: eventSeconds,
+                        duration: duration,
+                        startClock: formatClock(offStartedAt),
+                        endClock: formatClock(eventSeconds),
+                        durationClock: formatClock(duration),
+                        isLong: duration >= LONG_GAP_SECONDS
+                    });
+                }
+                offStartedAt = null;
+            }
+        }
+
+        var totalSeconds = 0;
+        var longestSeconds = 0;
+        var longCount = 0;
+        pauses.forEach(function (pause) {
+            totalSeconds += pause.duration;
+            if (pause.duration > longestSeconds) longestSeconds = pause.duration;
+            if (pause.isLong) longCount += 1;
+        });
+        var count = pauses.length;
+        var averageSeconds = count > 0 ? totalSeconds / count : 0;
+        var details = count > 0
+            ? pauses.map(function (pause, index) {
+                return "Gap " + (index + 1) + ": " +
+                    pause.startClock + "-" + pause.endClock +
+                    " = " + pause.durationClock + " between compressions" +
+                    (pause.isLong ? " [LONG >10s]" : "");
+            }).join("\n")
+            : "";
+
+        return {
+            pauses: pauses,
+            count: count,
+            totalSeconds: totalSeconds,
+            averageSeconds: averageSeconds,
+            longestSeconds: longestSeconds,
+            longCount: longCount,
+            totalClock: formatClock(totalSeconds),
+            averageClock: formatClock(averageSeconds),
+            longestClock: formatClock(longestSeconds),
+            details: details
+        };
+    }
+
+    /** Build on/gap visual segments from Initial / off|on / Stopped Compressions. */
+    function buildVisualSegments(rawLog) {
+        var text = cleanText(rawLog);
+        if (!text) return [];
+
+        var events = [];
+        var reStart = /Initial\s+compression\s+started(?:\s+at)?\s*:?\s*(\d{1,2}:\d{2}(?::\d{2})?)/gi;
+        var reOffOn = /Compressions\s+(off|on)\s*:\s*(\d{1,2}:\d{2}(?::\d{2})?)/gi;
+        var reStop = /Stopped\s+Compressions\s*:\s*(\d{1,2}:\d{2}(?::\d{2})?)/gi;
+        var m;
+
+        while ((m = reStart.exec(text)) !== null) {
+            var t0 = clockToSeconds(m[1]);
+            if (t0 != null) events.push({ kind: "start", t: t0 });
+        }
+        while ((m = reOffOn.exec(text)) !== null) {
+            var t1 = clockToSeconds(m[2]);
+            if (t1 != null) events.push({ kind: m[1].toLowerCase(), t: t1 });
+        }
+        while ((m = reStop.exec(text)) !== null) {
+            var t2 = clockToSeconds(m[1]);
+            if (t2 != null) events.push({ kind: "stop", t: t2 });
+        }
+
+        events.sort(function (a, b) { return a.t - b.t; });
+        if (!events.length) return [];
+
+        var segments = [];
+        var cursor = null;
+        var state = null;
+
+        events.forEach(function (ev) {
+            if (ev.kind === "start") {
+                cursor = ev.t;
+                state = "on";
+                return;
+            }
+            if (cursor == null) {
+                cursor = ev.t;
+                state = ev.kind === "off" ? "gap" : "on";
+                if (ev.kind === "stop") state = null;
+                return;
+            }
+            if (ev.t > cursor && state) {
+                var dur = ev.t - cursor;
+                segments.push({
+                    type: state,
+                    start: cursor,
+                    end: ev.t,
+                    duration: dur,
+                    isLong: state === "gap" && dur >= LONG_GAP_SECONDS
+                });
+            }
+            if (ev.kind === "off") {
+                cursor = ev.t;
+                state = "gap";
+            } else if (ev.kind === "on") {
+                cursor = ev.t;
+                state = "on";
+            } else if (ev.kind === "stop") {
+                cursor = ev.t;
+                state = null;
+            }
+        });
+
+        return segments;
+    }
+
+    var compressionGaps = calculateCompressionGaps(compressions);
+    var visualSegments = buildVisualSegments(compressions);
+    var pauseCount = compressionGaps.count > 0
+        ? String(compressionGaps.count)
+        : (pauseCountVar || "0");
+    var pauseTotal = compressionGaps.count > 0
+        ? compressionGaps.totalClock
+        : (cleanText(pauseTotalVar) || "00:00");
+    var pauseAverage = compressionGaps.count > 0
+        ? compressionGaps.averageClock
+        : (cleanText(pauseAverageVar) || "00:00");
+    var pauseDetails = compressionGaps.details || cleanText(pauseDetailsVar) || "";
+
     function normalizeCompressionLog(value) {
         var text = cleanText(value);
         if (!text) return ["No compression timestamps recorded."];
@@ -1221,9 +1423,50 @@ window.Script34 = function()
             .replace(/\s*\|\s*/g, "\n")
             .replace(/\s*(Compressions off:)/gi, "\n$1")
             .replace(/\s*(Compressions on:)/gi, "\n$1")
+            .replace(/\s*(Initial compression started)/gi, "\n$1")
+            .replace(/\s*(Stopped Compressions:)/gi, "\n$1")
             .split("\n")
             .map(function (line) { return line.trim(); })
             .filter(Boolean);
+    }
+
+    /** Timeline lines with computed time-between annotations after each on event. */
+    function buildCompressionTimelineLines(rawLog, gaps) {
+        var lines = normalizeCompressionLog(rawLog);
+        if (!gaps || !gaps.pauses || !gaps.pauses.length) return lines;
+
+        var enriched = [];
+        var pauseIndex = 0;
+        var pendingOff = null;
+
+        lines.forEach(function (line) {
+            enriched.push(line);
+            var lower = line.toLowerCase();
+            var clockMatch = line.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+            var clockSec = clockMatch ? clockToSeconds(clockMatch[1]) : null;
+
+            if (lower.indexOf("compressions off") !== -1 && clockSec != null) {
+                pendingOff = clockSec;
+            } else if (lower.indexOf("compressions on") !== -1 && pendingOff != null && clockSec != null) {
+                var pause = gaps.pauses[pauseIndex];
+                var gapSec = null;
+                if (pause && pause.start === pendingOff && pause.end === clockSec) {
+                    gapSec = pause.duration;
+                    pauseIndex += 1;
+                } else if (clockSec >= pendingOff) {
+                    gapSec = clockSec - pendingOff;
+                }
+                if (gapSec != null) {
+                    enriched.push(
+                        "Time between compressions: " + formatClock(gapSec) +
+                        (gapSec >= LONG_GAP_SECONDS ? " [LONG]" : "")
+                    );
+                }
+                pendingOff = null;
+            }
+        });
+
+        return enriched;
     }
 
     function paintPageBackground() {
@@ -1240,20 +1483,31 @@ window.Script34 = function()
         doc.setFillColor(theme.teal[0], theme.teal[1], theme.teal[2]);
         doc.rect(0, headerHeight - 2.5, pageWidth, 2.5, "F");
 
+        var textX = margin;
+        var logoUrl = window.SIMBOX_LOGO_DATA_URL || "";
+        if (logoUrl) {
+            try {
+                doc.addImage(logoUrl, "JPEG", margin, 3.6, logoW, logoH);
+                textX = margin + logoW + 5;
+            } catch (logoErr) {
+                textX = margin;
+            }
+        }
+
         doc.setFont("helvetica", "bold");
         doc.setFontSize(13);
         doc.setTextColor(255, 255, 255);
-        doc.text("Pediatric Cardiac Codes", margin, 9);
+        doc.text("Pediatric Cardiac Codes", textX, 10);
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8.5);
         doc.setTextColor(220, 236, 235);
-        doc.text("Simulation debrief report", margin, 14.5);
+        doc.text("Simulation debrief report", textX, 15.5);
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7.5);
         doc.setTextColor(210, 228, 227);
-        doc.text(generatedAt, pageWidth - margin, 11, { align: "right" });
+        doc.text(generatedAt, pageWidth - margin, 12, { align: "right" });
     }
 
     function addFooter(pageNumber, totalPages) {
@@ -1264,7 +1518,7 @@ window.Script34 = function()
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7.5);
         doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
-        doc.text("SimBox · Anonymous session summary · Not a medical record", margin, pageHeight - 4.5);
+        doc.text("SimBox+ · Anonymous session summary · Not a medical record", margin, pageHeight - 4.5);
         doc.text("Page " + pageNumber + " of " + totalPages, pageWidth - margin, pageHeight - 4.5, { align: "right" });
     }
 
@@ -1277,27 +1531,35 @@ window.Script34 = function()
         return currentY;
     }
 
-    function measureEntryRow(label, rawValue, width) {
+    function measureEntryRow(label, rawValue, width, keepFullDate) {
         var padX = 6;
         var inner = width - padX * 2;
-        var values = splitValues(rawValue);
+        var values = formatDisplayValues(rawValue, keepFullDate);
         if (!values.length) return 0;
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7.5);
         var labelLines = doc.splitTextToSize(label.replace(/:$/, ""), inner);
         var labelH = labelLines.length * 3.4;
-        var valueH = values.length * 4.6 + 1;
+
+        doc.setFont("courier", "bold");
+        doc.setFontSize(9);
+        var valueH = 0;
+        values.forEach(function (val) {
+            var valueLines = doc.splitTextToSize(val, inner);
+            valueH += valueLines.length * 4.4 + 0.4;
+        });
+
         return Math.max(labelH + valueH + 5, 11);
     }
 
-    function drawEntryRow(x, y, width, label, rawValue, rowIndex) {
+    function drawEntryRow(x, y, width, label, rawValue, rowIndex, keepFullDate) {
         var padX = 6;
         var inner = width - padX * 2;
-        var values = splitValues(rawValue);
+        var values = formatDisplayValues(rawValue, keepFullDate);
         if (!values.length) return 0;
 
-        var rowH = measureEntryRow(label, rawValue, width);
+        var rowH = measureEntryRow(label, rawValue, width, keepFullDate);
 
         if (rowIndex % 2 === 0) {
             doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
@@ -1313,11 +1575,13 @@ window.Script34 = function()
         doc.text(labelLines, x + padX, y + 4.2);
 
         var valueY = y + 4.2 + labelLines.length * 3.4 + 0.8;
-        values.forEach(function (val, i) {
-            doc.setFont("helvetica", "bold");
+        values.forEach(function (val) {
+            doc.setFont("courier", "bold");
             doc.setFontSize(9);
             doc.setTextColor(theme.copper[0], theme.copper[1], theme.copper[2]);
-            doc.text(val, x + padX, valueY + i * 4.6);
+            var valueLines = doc.splitTextToSize(val, inner);
+            doc.text(valueLines, x + padX, valueY);
+            valueY += valueLines.length * 4.4 + 0.4;
         });
 
         doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
@@ -1330,14 +1594,13 @@ window.Script34 = function()
     function measureStageCard(entries, width) {
         var headerH = 16;
         var padBottom = 5;
+        if (!stageHasValues(entries)) {
+            return headerH + padBottom + 14;
+        }
         var total = headerH + padBottom;
-        var rowIndex = 0;
         entries.forEach(function (entry) {
-            var h = measureEntryRow(entry[0], entry[1], width);
-            if (h > 0) {
-                total += h;
-                rowIndex += 1;
-            }
+            var h = measureEntryRow(entry[0], entry[1], width, entry[2] === true);
+            if (h > 0) total += h;
         });
         return total;
     }
@@ -1366,14 +1629,23 @@ window.Script34 = function()
         doc.setTextColor(240, 248, 247);
         doc.text(stageTheme.subtitle, x + 6, y + 11);
 
+        if (!stageHasValues(entries)) {
+            doc.setFont("helvetica", "italic");
+            doc.setFontSize(8.5);
+            doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+            doc.text("Not run in this session", x + 6, y + 22);
+            return;
+        }
+
         var cursorY = y + 16;
         var rowIndex = 0;
-        var contentLimit = y + height - 4;
+        var contentLimit = y + height - 2;
 
         entries.forEach(function (entry) {
-            if (cursorY >= contentLimit - 8) return;
-            var rowH = drawEntryRow(x, cursorY, width, entry[0], entry[1], rowIndex);
+            var rowH = measureEntryRow(entry[0], entry[1], width, entry[2] === true);
             if (rowH <= 0) return;
+            if (cursorY + rowH > contentLimit) return;
+            rowH = drawEntryRow(x, cursorY, width, entry[0], entry[1], rowIndex, entry[2] === true);
             cursorY += rowH;
             rowIndex += 1;
         });
@@ -1400,7 +1672,7 @@ window.Script34 = function()
         return y + 8;
     }
 
-    function drawMetricTile(x, y, w, h, label, value, accent) {
+    function drawMetricTile(x, y, w, h, label, value, accent, useCourier) {
         doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
         doc.roundedRect(x, y, w, h, 2, 2, "F");
         doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
@@ -1410,15 +1682,166 @@ window.Script34 = function()
         doc.roundedRect(x, y, w, 3, 2, 2, "F");
         doc.rect(x, y + 2, w, 1.2, "F");
 
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(14);
+        var displayValue = pdfSafeText(cleanText(value) || "—");
+        doc.setFont(useCourier ? "courier" : "helvetica", "bold");
+        doc.setFontSize(displayValue.length > 8 ? 11 : 14);
         doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
-        doc.text(String(value || "—"), x + w / 2, y + 11, { align: "center" });
+        var valueLines = doc.splitTextToSize(displayValue, w - 8);
+        doc.text(valueLines, x + w / 2, y + (valueLines.length > 1 ? 9 : 11), { align: "center" });
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7.5);
         doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
         doc.text(label, x + w / 2, y + 16, { align: "center" });
+    }
+
+    function drawGlanceStrip(startY, stageSets) {
+        var stagesRun = stageSets.filter(stageHasValues).length;
+        var gaps = compressionGaps.count;
+        var longGaps = compressionGaps.longCount;
+        var longest = gaps > 0 ? compressionGaps.longestClock : "00:00";
+        var totalOff = gaps > 0 ? compressionGaps.totalClock : (cleanText(pauseTotalVar) || "00:00");
+
+        var items = [
+            { label: "Stages run", value: String(stagesRun) + " / 3", accent: theme.teal, courier: false },
+            { label: "Gaps", value: String(gaps || pauseCount || "0"), accent: theme.copper, courier: false },
+            { label: "Long gaps", value: String(longGaps), accent: theme.warn, courier: false },
+            { label: "Longest gap", value: longest, accent: theme.danger, courier: true },
+            { label: "Total off chest", value: totalOff, accent: theme.danger, courier: true }
+        ];
+
+        var gap = 4;
+        var tileH = 18;
+        var tileW = (pageWidth - margin * 2 - gap * (items.length - 1)) / items.length;
+        startY = ensureSpace(tileH + 4, startY);
+
+        items.forEach(function (item, i) {
+            drawMetricTile(
+                margin + i * (tileW + gap),
+                startY,
+                tileW,
+                tileH,
+                item.label,
+                item.value,
+                item.accent,
+                item.courier
+            );
+        });
+
+        return startY + tileH + 6;
+    }
+
+    function drawKeyIntervals(startY) {
+        var items = [
+            { label: "First compressions", value: firstClock(two1), accent: theme.success },
+            { label: "Pads", value: firstClock(four1), accent: theme.teal },
+            { label: "Epinephrine", value: firstClock(seven1), accent: theme.copper },
+            { label: "Defibrillation", value: firstClock(eight1), accent: theme.danger },
+            { label: "ROSC announced", value: firstClock(two3), accent: theme.success }
+        ];
+
+        startY = drawSectionTitle(
+            startY,
+            "Key intervals",
+            "Simulation-clock times for critical actions"
+        );
+
+        var gap = 4;
+        var tileH = 20;
+        var tileW = (pageWidth - margin * 2 - gap * (items.length - 1)) / items.length;
+        startY = ensureSpace(tileH + 4, startY);
+
+        items.forEach(function (item, i) {
+            drawMetricTile(
+                margin + i * (tileW + gap),
+                startY,
+                tileW,
+                tileH,
+                item.label,
+                item.value,
+                item.accent,
+                true
+            );
+        });
+
+        return startY + tileH + 8;
+    }
+
+    function drawCompressionVisualBar(startY) {
+        startY = drawSectionTitle(
+            startY,
+            "Compression activity",
+            "Green = compressions on · Red = gap · Amber = long gap (≥10s)"
+        );
+
+        var barH = 14;
+        var legendH = 8;
+        var boxH = 10 + barH + legendH + 8;
+        startY = ensureSpace(boxH, startY);
+
+        var boxW = pageWidth - margin * 2;
+        var pad = 6;
+        var barX = margin + pad;
+        var barY = startY + 6;
+        var barW = boxW - pad * 2;
+
+        doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "F");
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "S");
+
+        if (!visualSegments.length) {
+            doc.setFont("helvetica", "italic");
+            doc.setFontSize(8.5);
+            doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+            doc.text("No compression activity recorded.", barX, barY + 8);
+            return startY + boxH + 6;
+        }
+
+        var minT = visualSegments[0].start;
+        var maxT = visualSegments[visualSegments.length - 1].end;
+        var span = Math.max(1, maxT - minT);
+
+        visualSegments.forEach(function (seg) {
+            var x0 = barX + ((seg.start - minT) / span) * barW;
+            var x1 = barX + ((seg.end - minT) / span) * barW;
+            var w = Math.max(0.6, x1 - x0);
+            var color = theme.success;
+            if (seg.type === "gap") {
+                color = seg.isLong ? theme.warn : theme.danger;
+            }
+            doc.setFillColor(color[0], color[1], color[2]);
+            doc.rect(x0, barY, w, barH, "F");
+
+            if (seg.type === "gap" && w >= 10) {
+                doc.setFont("courier", "bold");
+                doc.setFontSize(6.5);
+                doc.setTextColor(255, 255, 255);
+                var label = formatClock(seg.duration);
+                if (doc.getTextWidth(label) < w - 1) {
+                    doc.text(label, x0 + w / 2, barY + 8.5, { align: "center" });
+                }
+            }
+        });
+
+        var legendY = barY + barH + 6;
+        var legendItems = [
+            { label: "on", color: theme.success },
+            { label: "gap", color: theme.danger },
+            { label: "long", color: theme.warn }
+        ];
+        var lx = barX;
+        legendItems.forEach(function (item) {
+            doc.setFillColor(item.color[0], item.color[1], item.color[2]);
+            doc.rect(lx, legendY - 2.5, 4, 4, "F");
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(7.5);
+            doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+            doc.text(item.label, lx + 5.5, legendY + 0.8);
+            lx += 22;
+        });
+
+        return startY + boxH + 6;
     }
 
     function drawCompressionStats(startY) {
@@ -1427,17 +1850,21 @@ window.Script34 = function()
         var tileW = (pageWidth - margin * 2 - tileGap * 2) / 3;
         var blockH = tileH + 8;
 
-        startY = drawSectionTitle(startY, "Compression quality", "Interruption summary from the simulation clock");
+        startY = drawSectionTitle(
+            startY,
+            "Compression quality",
+            "Time between compressions (off to on) from the simulation clock"
+        );
 
         startY = ensureSpace(blockH, startY);
 
-        drawMetricTile(margin, startY, tileW, tileH, "Interruptions", pauseCount || "0", theme.copper);
-        drawMetricTile(margin + tileW + tileGap, startY, tileW, tileH, "Total time off", cleanText(pauseTotal) || "00:00", theme.danger);
-        drawMetricTile(margin + (tileW + tileGap) * 2, startY, tileW, tileH, "Average pause", cleanText(pauseAverage) || "00:00", theme.teal);
+        drawMetricTile(margin, startY, tileW, tileH, "Gaps between CPR", pauseCount || "0", theme.copper, false);
+        drawMetricTile(margin + tileW + tileGap, startY, tileW, tileH, "Total time between", cleanText(pauseTotal) || "00:00", theme.danger, true);
+        drawMetricTile(margin + (tileW + tileGap) * 2, startY, tileW, tileH, "Average gap", cleanText(pauseAverage) || "00:00", theme.teal, true);
 
         startY += blockH;
 
-        var detailsText = cleanText(pauseDetails);
+        var detailsText = pdfSafeText(cleanText(pauseDetails));
         if (detailsText && detailsText !== "No completed compression interruptions recorded.") {
             var boxW = pageWidth - margin * 2;
             var pad = 6;
@@ -1455,9 +1882,9 @@ window.Script34 = function()
             doc.setFont("helvetica", "bold");
             doc.setFontSize(8);
             doc.setTextColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
-            doc.text("Interruption breakdown", margin + pad, startY + 5.5);
+            doc.text("Time between compressions (each gap)", margin + pad, startY + 5.5);
 
-            doc.setFont("helvetica", "normal");
+            doc.setFont("courier", "normal");
             doc.setFontSize(8.5);
             doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
             doc.text(detailLines, margin + pad, startY + 10.5);
@@ -1469,60 +1896,90 @@ window.Script34 = function()
     }
 
     function drawCompressionLogLine(x, y, line, maxWidth) {
-        var lower = line.toLowerCase();
+        var safeLine = pdfSafeText(line);
+        var lower = safeLine.toLowerCase();
         var isOff = lower.indexOf("compressions off") !== -1;
         var isOn = lower.indexOf("compressions on") !== -1;
+        var isGap = lower.indexOf("time between compressions") !== -1;
+        var isLong = isGap && lower.indexOf("[long]") !== -1;
+        var lineHeight = 4.6;
+        var padY = 1.2;
 
-        if (isOff) {
+        doc.setFont(isGap || isOff || isOn ? "courier" : "helvetica", isOff || isOn || isGap ? "bold" : "normal");
+        doc.setFontSize(8.5);
+        var textLines = doc.splitTextToSize(safeLine, maxWidth - 6);
+        var blockH = textLines.length * lineHeight + padY * 2;
+
+        if (isLong) {
+            doc.setFillColor(theme.warnTint[0], theme.warnTint[1], theme.warnTint[2]);
+            doc.setTextColor(theme.warn[0], theme.warn[1], theme.warn[2]);
+        } else if (isGap) {
+            doc.setFillColor(theme.tealTint[0], theme.tealTint[1], theme.tealTint[2]);
+            doc.setTextColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
+        } else if (isOff) {
             doc.setFillColor(theme.dangerTint[0], theme.dangerTint[1], theme.dangerTint[2]);
-            doc.roundedRect(x, y - 3.2, maxWidth, 5.2, 1, 1, "F");
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(8.5);
             doc.setTextColor(theme.danger[0], theme.danger[1], theme.danger[2]);
         } else if (isOn) {
             doc.setFillColor(theme.successTint[0], theme.successTint[1], theme.successTint[2]);
-            doc.roundedRect(x, y - 3.2, maxWidth, 5.2, 1, 1, "F");
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(8.5);
             doc.setTextColor(theme.success[0], theme.success[1], theme.success[2]);
         } else {
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(8.5);
+            doc.setFillColor(248, 246, 242);
             doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
         }
 
-        doc.text(line, x + 2, y);
-        return 5.4;
+        doc.roundedRect(x, y, maxWidth, blockH, 1, 1, "F");
+        doc.text(textLines, x + 3, y + padY + 3.2);
+        return blockH + 1.2;
     }
 
     function drawCompressionLog(startY) {
-        var lines = normalizeCompressionLog(compressions);
+        var lines = buildCompressionTimelineLines(compressions, compressionGaps);
         var boxW = pageWidth - margin * 2;
         var pad = 7;
-        var lineHeight = 5.4;
         var headerH = 11;
         var innerW = boxW - pad * 2;
 
-        startY = drawSectionTitle(startY, "Compressions timeline", "Off/on events in simulation time order");
+        startY = drawSectionTitle(
+            startY,
+            "Compressions timeline",
+            "Off/on events with calculated time between each compression cycle"
+        );
 
         var lineIndex = 0;
         var firstChunk = true;
 
         while (lineIndex < lines.length) {
-            var available = contentBottom - startY - headerH - pad * 2;
-            var maxLines = Math.max(1, Math.floor(available / lineHeight));
-            var chunk = lines.slice(lineIndex, lineIndex + maxLines);
-            var boxH = headerH + chunk.length * lineHeight + pad * 2;
-
-            if (boxH > contentBottom - startY && lineIndex > 0) {
+            if (startY + headerH + pad * 2 + 8 > contentBottom) {
                 doc.addPage();
                 addHeader();
                 startY = contentTop;
                 firstChunk = false;
-                continue;
             }
 
-            startY = ensureSpace(Math.min(boxH, contentBottom - startY), startY);
+            var available = contentBottom - startY - headerH - pad * 2;
+            var chunk = [];
+            var chunkHeight = 0;
+            var probeIndex = lineIndex;
+
+            while (probeIndex < lines.length) {
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(8.5);
+                var textLines = doc.splitTextToSize(pdfSafeText(lines[probeIndex]), innerW - 6);
+                var lineBlockH = textLines.length * 4.6 + 1.2 * 2 + 1.2;
+                if (chunk.length && chunkHeight + lineBlockH > available) break;
+                if (!chunk.length && lineBlockH > available) {
+                    chunk.push(lines[probeIndex]);
+                    chunkHeight += lineBlockH;
+                    probeIndex += 1;
+                    break;
+                }
+                chunk.push(lines[probeIndex]);
+                chunkHeight += lineBlockH;
+                probeIndex += 1;
+            }
+
+            var boxH = headerH + chunkHeight + pad * 2;
+            startY = ensureSpace(boxH, startY);
 
             doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
             doc.roundedRect(margin, startY, boxW, boxH, 2.5, 2.5, "F");
@@ -1538,21 +1995,15 @@ window.Script34 = function()
             doc.setTextColor(255, 255, 255);
             doc.text(firstChunk ? "Event log" : "Event log (continued)", margin + pad, startY + 7);
 
-            var cursorY = startY + headerH + 5;
+            var cursorY = startY + headerH + pad;
             chunk.forEach(function (line) {
-                var h = drawCompressionLogLine(margin + pad, cursorY, line, innerW - 4);
+                var h = drawCompressionLogLine(margin + pad, cursorY, line, innerW);
                 cursorY += h;
             });
 
             lineIndex += chunk.length;
             firstChunk = false;
             startY = startY + boxH + 6;
-
-            if (lineIndex < lines.length) {
-                doc.addPage();
-                addHeader();
-                startY = contentTop;
-            }
         }
 
         return startY;
@@ -1562,7 +2013,7 @@ window.Script34 = function()
     addHeader();
 
     var stageOne = [
-        ["Begin simulation", simBegin1],
+        ["Begin simulation", simBegin1, true],
         ["Initial pulse check", one1],
         ["Initiated compressions", two1],
         ["Initiated BVM", three1],
@@ -1574,17 +2025,17 @@ window.Script34 = function()
     ];
 
     var stageTwo = [
-        ["Begin Stage 2", simBegin2],
+        ["Begin Stage 2", simBegin2, true],
         ["Rhythm/pulse check", one2],
         ["Epinephrine administered", two2],
         ["Defib delivered", three2],
         ["Switch compressors", four2],
         ["Continuous compressions", five2],
-        ["Breath every 2–3 seconds", six2]
+        ["Breath every 2-3 seconds", six2]
     ];
 
     var stageThree = [
-        ["Begin Stage 3", simBegin3],
+        ["Begin Stage 3", simBegin3, true],
         ["Checked pulse", one3],
         ["Announced ROSC", two3],
         ["Stopped compressions", three3],
@@ -1594,30 +2045,27 @@ window.Script34 = function()
     ];
 
     var stageSets = [stageOne, stageTwo, stageThree];
-    var stageY = drawSectionTitle(contentTop, "Code timeline by stage", "Clinical actions and simulation clock timestamps");
+
+    var y = contentTop;
+    y = drawGlanceStrip(y, stageSets);
+    y = drawKeyIntervals(y);
+
+    y = drawSectionTitle(y, "Code timeline by stage", "Clinical actions and simulation clock timestamps");
 
     var stageHeights = stageSets.map(function (entries) {
         return measureStageCard(entries, cardWidth);
     });
     var stageCardHeight = Math.max.apply(null, stageHeights);
+    y = ensureSpace(stageCardHeight + 4, y);
 
-    if (stageY + stageCardHeight > contentBottom - 36) {
-        stageThemes.forEach(function (st, i) {
-            drawStageCard(st, stageSets[i], margin + (cardWidth + cardGap) * i, stageY, cardWidth, stageCardHeight);
-        });
-        doc.addPage();
-        addHeader();
-        var compressionStartY = contentTop;
-        compressionStartY = drawCompressionStats(compressionStartY);
-        drawCompressionLog(compressionStartY);
-    } else {
-        stageThemes.forEach(function (st, i) {
-            drawStageCard(st, stageSets[i], margin + (cardWidth + cardGap) * i, stageY, cardWidth, stageCardHeight);
-        });
-        var compressionStartY = stageY + stageCardHeight + 10;
-        compressionStartY = drawCompressionStats(compressionStartY);
-        drawCompressionLog(compressionStartY);
-    }
+    stageThemes.forEach(function (st, i) {
+        drawStageCard(st, stageSets[i], margin + (cardWidth + cardGap) * i, y, cardWidth, stageCardHeight);
+    });
+    y = y + stageCardHeight + 10;
+
+    y = drawCompressionVisualBar(y);
+    y = drawCompressionStats(y);
+    drawCompressionLog(y);
 
     // Add footer after every page is created.
     var totalPages = doc.getNumberOfPages();
@@ -1682,7 +2130,8 @@ window.Script34 = function()
         }
     }
 
-    savePdf(doc, "Simulation_Debrief_Report.pdf");
+    var reportDate = new Date().toISOString().slice(0, 10);
+    savePdf(doc, "Simulation_Debrief_Report_" + reportDate + ".pdf");
   })();
 }
 
