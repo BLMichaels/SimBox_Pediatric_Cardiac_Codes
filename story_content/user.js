@@ -1113,6 +1113,8 @@ window.Script34 = function()
     var four1 = player.GetVar("Four1") || "";
     var five1 = player.GetVar("Five1") || "";
     var six1 = player.GetVar("Six1") || "";
+    var seven1 = player.GetVar("Seven1") || "";
+    var eight1 = player.GetVar("Eight1") || "";
 
     var simBegin2 = player.GetVar("SimBegin2") || "";
     var one2 = player.GetVar("One2") || "";
@@ -1131,6 +1133,10 @@ window.Script34 = function()
 
     var compressions = player.GetVar("compressionsString") || "";
     var debrief = player.GetVar("Debrief") || "";
+    var pauseCount = player.GetVar("CompressionPauseCount") || "";
+    var pauseTotal = player.GetVar("CompressionPauseTotal") || "";
+    var pauseAverage = player.GetVar("CompressionPauseAverage") || "";
+    var pauseDetails = player.GetVar("CompressionPauseDetails") || "";
 
     // Confirm that jsPDF is available in story.html
     if (!window.jspdf || !window.jspdf.jsPDF) {
@@ -1220,29 +1226,22 @@ window.Script34 = function()
 
     function calculateStageHeight(entries, width) {
         var padding = 5;
-        var rowGap = 2.5;
+        var rowGap = 3;
         var headerSpace = 11;
+        var labelGap = 4.2;
+        var lineHeight = 4.2;
         var height = padding + headerSpace;
+        var textWidth = width - padding * 2;
 
         entries.forEach(function (entry) {
-            var label = entry[0];
             var value = cleanText(entry[1]);
+            if (!value) return;
 
-            if (!value) {
-                return;
-            }
-
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(8.5);
-            var labelWidth = doc.getTextWidth(label + " ");
-
+            height += labelGap;
             doc.setFont("helvetica", "normal");
             doc.setFontSize(8.5);
-
-            var valueWidth = width - (padding * 2) - labelWidth;
-            var valueLines = doc.splitTextToSize(value, Math.max(valueWidth, 25));
-
-            height += Math.max(5, valueLines.length * 4.2) + rowGap;
+            var valueLines = doc.splitTextToSize(value, textWidth);
+            height += valueLines.length * lineHeight + rowGap;
         });
 
         return height + padding;
@@ -1250,9 +1249,13 @@ window.Script34 = function()
 
     function drawStageCard(title, entries, x, y, width, height, accentColor) {
         var padding = 5;
-        var currentY = y + 8;
+        var rowGap = 3;
+        var labelGap = 4.2;
+        var lineHeight = 4.2;
+        var textWidth = width - padding * 2;
+        var currentY = y + 16;
+        var contentLimit = y + height - padding;
 
-        // Card background and border
         doc.setFillColor(lightFill[0], lightFill[1], lightFill[2]);
         doc.roundedRect(x, y, width, height, 2, 2, "F");
 
@@ -1260,7 +1263,6 @@ window.Script34 = function()
         doc.setLineWidth(0.35);
         doc.roundedRect(x, y, width, height, 2, 2, "S");
 
-        // Stage title band
         doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
         doc.roundedRect(x, y, width, 10, 2, 2, "F");
         doc.rect(x, y + 7, width, 3, "F");
@@ -1270,32 +1272,24 @@ window.Script34 = function()
         doc.setTextColor(255, 255, 255);
         doc.text(title, x + padding, y + 6.7);
 
-        currentY = y + 16;
-
         entries.forEach(function (entry) {
             var label = entry[0];
             var value = cleanText(entry[1]);
-
-            if (!value) {
-                return;
-            }
+            if (!value) return;
+            if (currentY > contentLimit - 6) return;
 
             doc.setFont("helvetica", "bold");
             doc.setFontSize(8.5);
             doc.setTextColor(55, 55, 55);
             doc.text(label, x + padding, currentY);
-
-            var labelWidth = doc.getTextWidth(label + " ");
-            var valueX = x + padding + labelWidth;
-            var valueWidth = width - (padding * 2) - labelWidth;
+            currentY += labelGap;
 
             doc.setFont("helvetica", "normal");
+            doc.setFontSize(8.5);
             doc.setTextColor(0, 0, 0);
-
-            var valueLines = doc.splitTextToSize(value, Math.max(valueWidth, 25));
-            doc.text(valueLines, valueX, currentY);
-
-            currentY += Math.max(5, valueLines.length * 4.2) + 2.5;
+            var valueLines = doc.splitTextToSize(value, textWidth);
+            doc.text(valueLines, x + padding, currentY);
+            currentY += valueLines.length * lineHeight + rowGap;
         });
     }
 
@@ -1406,6 +1400,60 @@ window.Script34 = function()
         }
     }
 
+    function drawCompressionStats(startY) {
+        var x = margin;
+        var width = pageWidth - margin * 2;
+        var padding = 6;
+        var stats = [
+            ["Interruptions:", String(pauseCount || "0")],
+            ["Total time off:", cleanText(pauseTotal) || "00:00"],
+            ["Average pause:", cleanText(pauseAverage) || "00:00"]
+        ];
+        var detailsText = cleanText(pauseDetails);
+        var lineHeight = 4.5;
+        var boxHeight = 28;
+        if (detailsText && detailsText !== "No completed compression interruptions recorded.") {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(9);
+            var detailLines = doc.splitTextToSize(detailsText, width - padding * 2);
+            boxHeight += detailLines.length * lineHeight + 4;
+        }
+
+        startY = ensureSpace(boxHeight + 6, startY);
+
+        doc.setFillColor(252, 252, 252);
+        doc.roundedRect(x, startY, width, boxHeight, 2, 2, "F");
+        doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+        doc.roundedRect(x, startY, width, boxHeight, 2, 2, "S");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(45, 45, 45);
+        doc.text("Compression interruption summary", x + padding, startY + 7);
+
+        var rowY = startY + 13;
+        stats.forEach(function (row) {
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(9);
+            doc.setTextColor(55, 55, 55);
+            doc.text(row[0], x + padding, rowY);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(0, 0, 0);
+            doc.text(row[1], x + padding + 38, rowY);
+            rowY += lineHeight;
+        });
+
+        if (detailsText && detailsText !== "No completed compression interruptions recorded.") {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8.5);
+            doc.setTextColor(0, 0, 0);
+            var lines = doc.splitTextToSize(detailsText, width - padding * 2);
+            doc.text(lines, x + padding, rowY + 2);
+        }
+
+        return startY + boxHeight + 6;
+    }
+
     // Build the stages as structured data.
     var stageOne = [
         ["Begin simulation:", simBegin1],
@@ -1414,7 +1462,9 @@ window.Script34 = function()
         ["Initiated BVM:", three1],
         ["Applied pads:", four1],
         ["IV/IO access:", five1],
-        ["Rhythm/pulse check:", six1]
+        ["Rhythm/pulse check:", six1],
+        ["Epinephrine administered:", seven1],
+        ["Defib delivered:", eight1]
     ];
 
     var stageTwo = [
@@ -1447,32 +1497,55 @@ window.Script34 = function()
     var stageCardHeight = Math.max(stageOneHeight, stageTwoHeight, stageThreeHeight);
     var stageY = contentTop;
 
-    // If a stage section somehow becomes too tall, continue the log on page 2.
-    if (stageY + stageCardHeight > contentBottom - 25) {
-        stageCardHeight = contentBottom - stageY - 25;
+    // If stages won't fit above the compression section, move compressions to page 2.
+    var compressionStartY = stageY + stageCardHeight + 8;
+    if (compressionStartY > contentBottom - 40) {
+        drawStageCard("Stage One", stageOne, margin, stageY, cardWidth, stageCardHeight, stageOneColor);
+        drawStageCard(
+            "Stage Two (Optional)",
+            stageTwo,
+            margin + cardWidth + cardGap,
+            stageY,
+            cardWidth,
+            stageCardHeight,
+            stageTwoColor
+        );
+        drawStageCard(
+            "Stage Three",
+            stageThree,
+            margin + (cardWidth + cardGap) * 2,
+            stageY,
+            cardWidth,
+            stageCardHeight,
+            stageThreeColor
+        );
+        doc.addPage();
+        addHeader();
+        compressionStartY = contentTop;
+    } else {
+        drawStageCard("Stage One", stageOne, margin, stageY, cardWidth, stageCardHeight, stageOneColor);
+        drawStageCard(
+            "Stage Two (Optional)",
+            stageTwo,
+            margin + cardWidth + cardGap,
+            stageY,
+            cardWidth,
+            stageCardHeight,
+            stageTwoColor
+        );
+        drawStageCard(
+            "Stage Three",
+            stageThree,
+            margin + (cardWidth + cardGap) * 2,
+            stageY,
+            cardWidth,
+            stageCardHeight,
+            stageThreeColor
+        );
     }
 
-    drawStageCard("Stage One", stageOne, margin, stageY, cardWidth, stageCardHeight, stageOneColor);
-    drawStageCard(
-        "Stage Two (Optional)",
-        stageTwo,
-        margin + cardWidth + cardGap,
-        stageY,
-        cardWidth,
-        stageCardHeight,
-        stageTwoColor
-    );
-    drawStageCard(
-        "Stage Three",
-        stageThree,
-        margin + ((cardWidth + cardGap) * 2),
-        stageY,
-        cardWidth,
-        stageCardHeight,
-        stageThreeColor
-    );
-
-    drawCompressionLog(stageY + stageCardHeight + 8);
+    compressionStartY = drawCompressionStats(compressionStartY);
+    drawCompressionLog(compressionStartY);
 
     // Add footer after every page is created.
     var totalPages = doc.getNumberOfPages();
@@ -1482,8 +1555,63 @@ window.Script34 = function()
         addFooter(page, totalPages);
     }
 
-    doc.save("Simulation_Debrief_Report.pdf");
-})();
+    function savePdf(doc, filename) {
+        var blob;
+        try {
+            blob = doc.output("blob");
+        } catch (e0) {
+            try {
+                doc.save(filename);
+                return;
+            } catch (e1) {
+                alert("Could not create the PDF. Try opening the case in a new browser tab.");
+                return;
+            }
+        }
+
+        var url = URL.createObjectURL(blob);
+        var opened = false;
+
+        try {
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            a.rel = "noopener";
+            a.style.display = "none";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            opened = true;
+        } catch (e2) {}
+
+        if (!opened) {
+            try {
+                opened = !!window.open(url, "_blank");
+            } catch (e3) {}
+        }
+
+        if (!opened) {
+            try {
+                doc.output("dataurlnewwindow");
+                opened = true;
+            } catch (e4) {}
+        }
+
+        window.setTimeout(function () {
+            try {
+                URL.revokeObjectURL(url);
+            } catch (e5) {}
+        }, 60000);
+
+        if (!opened) {
+            alert(
+                "The PDF was created but this embedded page blocked the download. Open the case in a new tab and use Print Summary again."
+            );
+        }
+    }
+
+    savePdf(doc, "Simulation_Debrief_Report.pdf");
+  })();
 }
 
 };
