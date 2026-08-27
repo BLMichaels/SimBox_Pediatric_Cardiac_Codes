@@ -1771,7 +1771,7 @@ window.Script34 = function()
             }
         });
 
-        return startY + boxH + 5;
+        return startY + boxH + 12;
     }
 
     function drawKeyIntervals(startY) {
