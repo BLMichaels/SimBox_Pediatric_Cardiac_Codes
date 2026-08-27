@@ -1431,43 +1431,62 @@ window.Script34 = function()
             .filter(Boolean);
     }
 
-    /** Timeline lines with computed time-between annotations after each on event. */
-    function buildCompressionTimelineLines(rawLog, gaps) {
+    /** Build start/stop markers + off→on gap rounds for a clearer layout. */
+    function buildCompressionRounds(rawLog, gaps) {
         var lines = normalizeCompressionLog(rawLog);
-        if (!gaps || !gaps.pauses || !gaps.pauses.length) return lines;
-
-        var enriched = [];
+        var rounds = [];
         var pauseIndex = 0;
         var pendingOff = null;
+        var pendingOffClock = null;
+        var gapNum = 0;
 
         lines.forEach(function (line) {
-            enriched.push(line);
             var lower = line.toLowerCase();
             var clockMatch = line.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
             var clockSec = clockMatch ? clockToSeconds(clockMatch[1]) : null;
+            var clockLabel = clockMatch ? clockMatch[1] : "";
 
             if (lower.indexOf("compressions off") !== -1 && clockSec != null) {
                 pendingOff = clockSec;
+                pendingOffClock = formatClock(clockSec);
             } else if (lower.indexOf("compressions on") !== -1 && pendingOff != null && clockSec != null) {
-                var pause = gaps.pauses[pauseIndex];
                 var gapSec = null;
+                var pause = gaps && gaps.pauses ? gaps.pauses[pauseIndex] : null;
                 if (pause && pause.start === pendingOff && pause.end === clockSec) {
                     gapSec = pause.duration;
                     pauseIndex += 1;
                 } else if (clockSec >= pendingOff) {
                     gapSec = clockSec - pendingOff;
                 }
-                if (gapSec != null) {
-                    enriched.push(
-                        "Time between compressions: " + formatClock(gapSec) +
-                        (gapSec >= LONG_GAP_SECONDS ? " [LONG]" : "")
-                    );
-                }
+                gapNum += 1;
+                rounds.push({
+                    type: "round",
+                    number: gapNum,
+                    offClock: pendingOffClock || formatClock(pendingOff),
+                    onClock: formatClock(clockSec),
+                    gapClock: gapSec != null ? formatClock(gapSec) : "—",
+                    isLong: gapSec != null && gapSec >= LONG_GAP_SECONDS
+                });
                 pendingOff = null;
+                pendingOffClock = null;
+            } else if (
+                lower.indexOf("initial compression") !== -1 ||
+                lower.indexOf("stopped compressions") !== -1
+            ) {
+                rounds.push({
+                    type: "marker",
+                    text: pdfSafeText(line),
+                    kind: lower.indexOf("stopped") !== -1 ? "stop" : "start"
+                });
+            } else if (lower.indexOf("compressions off") === -1 && lower.indexOf("compressions on") === -1) {
+                rounds.push({ type: "marker", text: pdfSafeText(line), kind: "note" });
             }
         });
 
-        return enriched;
+        if (!rounds.length) {
+            rounds.push({ type: "marker", text: "No compression timestamps recorded.", kind: "note" });
+        }
+        return rounds;
     }
 
     function paintPageBackground() {
@@ -1948,61 +1967,92 @@ window.Script34 = function()
         return startY + 2;
     }
 
-    function drawCompressionLogLine(x, y, line, maxWidth) {
-        var safeLine = pdfSafeText(line);
-        var lower = safeLine.toLowerCase();
-        var isOff = lower.indexOf("compressions off") !== -1;
-        var isOn = lower.indexOf("compressions on") !== -1;
-        var isGap = lower.indexOf("time between compressions") !== -1;
-        var isLong = isGap && lower.indexOf("[long]") !== -1;
-        var lineHeight = 5.4;
-        var padY = 1.6;
+    function drawCompressionRound(x, y, width, round) {
+        var rowH = 16;
+        var labelW = 16;
+        var gap = 3;
+        var cellW = (width - labelW - gap * 3) / 3;
+        var cellH = 12;
+        var cellY = y + 2;
 
-        doc.setFont(isGap || isOff || isOn ? "courier" : "helvetica", isOff || isOn || isGap ? "bold" : "normal");
-        doc.setFontSize(10);
-        var textLines = doc.splitTextToSize(safeLine, maxWidth - 6);
-        var blockH = textLines.length * lineHeight + padY * 2;
+        doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        doc.roundedRect(x, y, width, rowH, 1.8, 1.8, "F");
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(x, y, width, rowH, 1.8, 1.8, "S");
 
-        if (isLong) {
-            doc.setFillColor(theme.warnTint[0], theme.warnTint[1], theme.warnTint[2]);
-            doc.setTextColor(theme.warn[0], theme.warn[1], theme.warn[2]);
-        } else if (isGap) {
-            doc.setFillColor(theme.tealTint[0], theme.tealTint[1], theme.tealTint[2]);
-            doc.setTextColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
-        } else if (isOff) {
-            doc.setFillColor(theme.dangerTint[0], theme.dangerTint[1], theme.dangerTint[2]);
-            doc.setTextColor(theme.danger[0], theme.danger[1], theme.danger[2]);
-        } else if (isOn) {
-            doc.setFillColor(theme.successTint[0], theme.successTint[1], theme.successTint[2]);
-            doc.setTextColor(theme.success[0], theme.success[1], theme.success[2]);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+        doc.text("#" + round.number, x + 3, y + 10);
+
+        var cells = [
+            { label: "OFF", value: round.offClock, bg: theme.dangerTint, fg: theme.danger },
+            { label: "ON", value: round.onClock, bg: theme.successTint, fg: theme.success },
+            {
+                label: round.isLong ? "GAP · LONG" : "GAP",
+                value: round.gapClock,
+                bg: round.isLong ? theme.warnTint : [255, 244, 230],
+                fg: round.isLong ? theme.warn : theme.copper
+            }
+        ];
+
+        cells.forEach(function (cell, i) {
+            var cx = x + labelW + gap + i * (cellW + gap);
+            doc.setFillColor(cell.bg[0], cell.bg[1], cell.bg[2]);
+            doc.roundedRect(cx, cellY, cellW, cellH, 1.2, 1.2, "F");
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(6.5);
+            doc.setTextColor(cell.fg[0], cell.fg[1], cell.fg[2]);
+            doc.text(cell.label, cx + 3, cellY + 4);
+
+            doc.setFont("courier", "bold");
+            doc.setFontSize(11);
+            doc.setTextColor(cell.fg[0], cell.fg[1], cell.fg[2]);
+            doc.text(cell.value, cx + cellW - 3, cellY + 9.2, { align: "right" });
+        });
+
+        return rowH + 4;
+    }
+
+    function drawCompressionMarker(x, y, width, marker) {
+        var h = 10;
+        if (marker.kind === "start") {
+            doc.setFillColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+            doc.setTextColor(255, 255, 255);
+        } else if (marker.kind === "stop") {
+            doc.setFillColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
+            doc.setTextColor(255, 255, 255);
         } else {
             doc.setFillColor(248, 246, 242);
             doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
         }
-
-        doc.roundedRect(x, y, maxWidth, blockH, 1, 1, "F");
-        doc.text(textLines, x + 3, y + padY + 3.2);
-        return blockH + 1.2;
+        doc.roundedRect(x, y, width, h, 1.2, 1.2, "F");
+        doc.setFont("helvetica", marker.kind === "note" ? "normal" : "bold");
+        doc.setFontSize(9);
+        doc.text(marker.text, x + 4, y + 6.5);
+        return h + 5;
     }
 
     function drawCompressionLog(startY) {
-        var lines = buildCompressionTimelineLines(compressions, compressionGaps);
+        var rounds = buildCompressionRounds(compressions, compressionGaps);
         var boxW = pageWidth - margin * 2;
-        var pad = 7;
-        var headerH = 11;
+        var pad = 6;
+        var headerH = 12;
         var innerW = boxW - pad * 2;
 
         startY = drawSectionTitle(
             startY,
             "Compressions timeline",
-            "Off/on events with calculated time between each compression cycle"
+            "Each interruption as one round: off · on · time between"
         );
 
-        var lineIndex = 0;
+        var itemIndex = 0;
         var firstChunk = true;
 
-        while (lineIndex < lines.length) {
-            if (startY + headerH + pad * 2 + 8 > contentBottom) {
+        while (itemIndex < rounds.length) {
+            if (startY + headerH + pad * 2 + 20 > contentBottom) {
                 doc.addPage();
                 addHeader();
                 startY = contentTop;
@@ -2012,23 +2062,21 @@ window.Script34 = function()
             var available = contentBottom - startY - headerH - pad * 2;
             var chunk = [];
             var chunkHeight = 0;
-            var probeIndex = lineIndex;
+            var probe = itemIndex;
 
-            while (probeIndex < lines.length) {
-                doc.setFont("helvetica", "normal");
-                doc.setFontSize(10);
-                var textLines = doc.splitTextToSize(pdfSafeText(lines[probeIndex]), innerW - 6);
-                var lineBlockH = textLines.length * 5.4 + 1.6 * 2 + 1.2;
-                if (chunk.length && chunkHeight + lineBlockH > available) break;
-                if (!chunk.length && lineBlockH > available) {
-                    chunk.push(lines[probeIndex]);
-                    chunkHeight += lineBlockH;
-                    probeIndex += 1;
+            while (probe < rounds.length) {
+                var item = rounds[probe];
+                var itemH = item.type === "round" ? 20 : 15;
+                if (chunk.length && chunkHeight + itemH > available) break;
+                if (!chunk.length && itemH > available) {
+                    chunk.push(item);
+                    chunkHeight += itemH;
+                    probe += 1;
                     break;
                 }
-                chunk.push(lines[probeIndex]);
-                chunkHeight += lineBlockH;
-                probeIndex += 1;
+                chunk.push(item);
+                chunkHeight += itemH;
+                probe += 1;
             }
 
             var boxH = headerH + chunkHeight + pad * 2;
@@ -2041,20 +2089,27 @@ window.Script34 = function()
 
             doc.setFillColor(theme.ink[0], theme.ink[1], theme.ink[2]);
             doc.roundedRect(margin, startY, boxW, headerH, 2.5, 2.5, "F");
-            doc.rect(margin, startY + 8, boxW, 3, "F");
+            doc.rect(margin, startY + 9, boxW, 3, "F");
 
             doc.setFont("helvetica", "bold");
             doc.setFontSize(10);
             doc.setTextColor(255, 255, 255);
-            doc.text(firstChunk ? "Event log" : "Event log (continued)", margin + pad, startY + 7.5);
+            doc.text(
+                firstChunk ? "Interruption rounds" : "Interruption rounds (continued)",
+                margin + pad,
+                startY + 8
+            );
 
             var cursorY = startY + headerH + pad;
-            chunk.forEach(function (line) {
-                var h = drawCompressionLogLine(margin + pad, cursorY, line, innerW);
-                cursorY += h;
+            chunk.forEach(function (entry) {
+                if (entry.type === "round") {
+                    cursorY += drawCompressionRound(margin + pad, cursorY, innerW, entry);
+                } else {
+                    cursorY += drawCompressionMarker(margin + pad, cursorY, innerW, entry);
+                }
             });
 
-            lineIndex += chunk.length;
+            itemIndex += chunk.length;
             firstChunk = false;
             startY = startY + boxH + 6;
         }
