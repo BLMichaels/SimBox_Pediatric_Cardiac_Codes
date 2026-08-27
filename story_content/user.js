@@ -1487,6 +1487,9 @@ window.Script34 = function()
         var logoUrl = window.SIMBOX_LOGO_DATA_URL || "";
         if (logoUrl) {
             try {
+                // Light plate behind logo so blue + red read clearly on the teal header
+                doc.setFillColor(theme.paper[0], theme.paper[1], theme.paper[2]);
+                doc.roundedRect(margin - 0.8, 3.0, logoW + 1.6, logoH + 1.2, 1.2, 1.2, "F");
                 doc.addImage(logoUrl, "JPEG", margin, 3.6, logoW, logoH);
                 textX = margin + logoW + 5;
             } catch (logoErr) {
