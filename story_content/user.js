@@ -1478,40 +1478,25 @@ window.Script34 = function()
     function addHeader() {
         paintPageBackground();
 
-        // Clinical letterhead: light surface, brand + title, teal rule (no floating badge)
+        // Clinical letterhead — white band, typeset brand (crisp), teal rule
         doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
         doc.rect(0, 0, pageWidth, headerHeight, "F");
 
-        var textX = margin;
-        var logoUrl = window.SIMBOX_LOGO_DATA_URL || "";
-        var logoDrawn = false;
-        if (logoUrl) {
-            try {
-                var logoY = (headerHeight - 3 - logoH) / 2;
-                doc.addImage(logoUrl, "JPEG", margin, logoY, logoW, logoH);
-                textX = margin + logoW + 6;
-                logoDrawn = true;
-            } catch (logoErr) {
-                textX = margin;
-            }
-        }
+        var brandBlue = [36, 92, 168];
+        var brandRed = [214, 40, 41];
 
-        if (!logoDrawn) {
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(12);
-            doc.setTextColor(40, 80, 150);
-            doc.text("SimBox", margin, 11);
-            var simW = doc.getTextWidth("SimBox");
-            doc.setTextColor(200, 40, 40);
-            doc.text("+", margin + simW + 0.5, 11);
-            textX = margin + simW + 8;
-        }
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.setTextColor(brandBlue[0], brandBlue[1], brandBlue[2]);
+        doc.text("SimBox", margin, 11.2);
+        var simW = doc.getTextWidth("SimBox");
+        doc.setTextColor(brandRed[0], brandRed[1], brandRed[2]);
+        doc.text("+", margin + simW + 0.4, 11.2);
+        var textX = margin + simW + 7.5;
 
-        if (logoDrawn || textX > margin) {
-            doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
-            doc.setLineWidth(0.35);
-            doc.line(textX - 3, 6, textX - 3, headerHeight - 6);
-        }
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.setLineWidth(0.4);
+        doc.line(textX - 3.5, 5.5, textX - 3.5, headerHeight - 5.5);
 
         doc.setFont("helvetica", "bold");
         doc.setFontSize(12.5);
@@ -1521,7 +1506,7 @@ window.Script34 = function()
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8);
         doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
-        doc.text("Simulation debrief report", textX, 15.5);
+        doc.text("Simulation debrief report", textX, 15.2);
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7.5);
