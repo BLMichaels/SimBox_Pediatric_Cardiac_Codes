@@ -1709,7 +1709,7 @@ window.Script34 = function()
         var longest = gaps > 0 ? compressionGaps.longestClock : "00:00";
         var totalOff = gaps > 0 ? compressionGaps.totalClock : (cleanText(pauseTotalVar) || "00:00");
 
-        var boxH = 15;
+        var boxH = 20;
         var boxW = pageWidth - margin * 2;
         startY = ensureSpace(boxH + 4, startY);
 
@@ -1722,27 +1722,33 @@ window.Script34 = function()
         ];
         var colW = boxW / facts.length;
 
-        doc.setFillColor(theme.ink[0], theme.ink[1], theme.ink[2]);
-        doc.roundedRect(margin, startY, boxW, boxH, 1.8, 1.8, "F");
+        // Light teal plate — dark text reads more clearly than white-on-black
+        doc.setFillColor(theme.tealTint[0], theme.tealTint[1], theme.tealTint[2]);
+        doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "F");
+        doc.setDrawColor(theme.teal[0], theme.teal[1], theme.teal[2]);
+        doc.setLineWidth(0.45);
+        doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "S");
 
         facts.forEach(function (fact, i) {
             var cx = margin + colW * i + colW / 2;
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(6);
-            doc.setTextColor(160, 170, 180);
-            doc.text(fact.label.toUpperCase(), cx, startY + 5, { align: "center" });
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(7.5);
+            doc.setTextColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
+            doc.text(fact.label.toUpperCase(), cx, startY + 6.5, { align: "center" });
+
             doc.setFont("courier", "bold");
-            doc.setFontSize(10);
+            doc.setFontSize(12);
             if (fact.warn) {
-                doc.setTextColor(theme.warn[0] + 40, theme.warn[1] + 40, theme.warn[2]);
+                doc.setTextColor(theme.warn[0], theme.warn[1], theme.warn[2]);
             } else {
-                doc.setTextColor(255, 255, 255);
+                doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
             }
-            doc.text(String(fact.value), cx, startY + 11.5, { align: "center" });
+            doc.text(String(fact.value), cx, startY + 15, { align: "center" });
+
             if (i < facts.length - 1) {
-                doc.setDrawColor(70, 80, 92);
-                doc.setLineWidth(0.2);
-                doc.line(margin + colW * (i + 1), startY + 3, margin + colW * (i + 1), startY + boxH - 3);
+                doc.setDrawColor(theme.teal[0], theme.teal[1], theme.teal[2]);
+                doc.setLineWidth(0.25);
+                doc.line(margin + colW * (i + 1), startY + 3.5, margin + colW * (i + 1), startY + boxH - 3.5);
             }
         });
 
@@ -1764,9 +1770,9 @@ window.Script34 = function()
             "Simulation-clock time to critical actions"
         );
 
-        var boxH = 22;
+        var boxH = 28;
         var boxW = pageWidth - margin * 2;
-        var padX = 10;
+        var padX = 12;
         startY = ensureSpace(boxH + 4, startY);
 
         doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
@@ -1777,10 +1783,10 @@ window.Script34 = function()
 
         var innerW = boxW - padX * 2;
         var step = items.length > 1 ? innerW / (items.length - 1) : 0;
-        var lineY = startY + 9;
+        var lineY = startY + 10;
 
         doc.setDrawColor(theme.teal[0], theme.teal[1], theme.teal[2]);
-        doc.setLineWidth(1.1);
+        doc.setLineWidth(1.2);
         doc.line(margin + padX, lineY, margin + padX + innerW, lineY);
 
         items.forEach(function (item, i) {
@@ -1792,23 +1798,23 @@ window.Script34 = function()
                 has ? theme.teal[1] : theme.border[1],
                 has ? theme.teal[2] : theme.border[2]
             );
-            doc.circle(x, lineY, 2.1, "F");
+            doc.circle(x, lineY, 2.4, "F");
             doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
-            doc.circle(x, lineY, 0.9, "F");
+            doc.circle(x, lineY, 1.0, "F");
 
             doc.setFont("courier", "bold");
-            doc.setFontSize(9);
+            doc.setFontSize(11);
             doc.setTextColor(
                 has ? theme.ink[0] : theme.inkSoft[0],
                 has ? theme.ink[1] : theme.inkSoft[1],
                 has ? theme.ink[2] : theme.inkSoft[2]
             );
-            doc.text(has ? item.value : "--:--", x, startY + 16.2, { align: "center" });
+            doc.text(has ? item.value : "--:--", x, startY + 18.5, { align: "center" });
 
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(6.5);
-            doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
-            doc.text(item.label, x, startY + 19.8, { align: "center" });
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8);
+            doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+            doc.text(item.label, x, startY + 24, { align: "center" });
         });
 
         return startY + boxH + 6;
