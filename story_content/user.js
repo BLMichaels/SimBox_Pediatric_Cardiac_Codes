@@ -688,10 +688,10 @@ window.Script21 = function()
 
     var details = count > 0
         ? pauses.map(function (pause, index) {
-            return "Interruption " + (index + 1) + ": " +
-                formatTime(pause.start) + "–" +
+            return "Gap " + (index + 1) + ": " +
+                formatTime(pause.start) + "-" +
                 formatTime(pause.end) + " = " +
-                formatTime(pause.duration);
+                formatTime(pause.duration) + " between compressions";
         }).join("<br>")
         : "No completed compression interruptions recorded.";
 
@@ -1102,418 +1102,1230 @@ window.Script33 = function()
 
 window.Script34 = function()
 {
-  (function () {
-    try {
-        var player = GetPlayer();
+  (async function () {
+    var player = GetPlayer();
 
-        // =========================
-        // Read Storyline variables
-        // =========================
-        var simBegin1 = player.GetVar("SimBegin1") || "";
-        var one1 = player.GetVar("One1") || "";
-        var two1 = player.GetVar("Two1") || "";
-        var three1 = player.GetVar("Three1") || "";
-        var four1 = player.GetVar("Four1") || "";
-        var five1 = player.GetVar("Five1") || "";
-        var six1 = player.GetVar("Six1") || "";
+    // Pull Storyline variables
+    var simBegin1 = player.GetVar("SimBegin1") || "";
+    var one1 = player.GetVar("One1") || "";
+    var two1 = player.GetVar("Two1") || "";
+    var three1 = player.GetVar("Three1") || "";
+    var four1 = player.GetVar("Four1") || "";
+    var five1 = player.GetVar("Five1") || "";
+    var six1 = player.GetVar("Six1") || "";
+    var seven1 = player.GetVar("Seven1") || "";
+    var eight1 = player.GetVar("Eight1") || "";
 
-        var simBegin2 = player.GetVar("SimBegin2") || "";
-        var one2 = player.GetVar("One2") || "";
-        var two2 = player.GetVar("Two2") || "";
-        var three2 = player.GetVar("Three2") || "";
-        var four2 = player.GetVar("Four2") || "";
-        var five2 = player.GetVar("Five2") || "";
-        var six2 = player.GetVar("Six2") || "";
+    var simBegin2 = player.GetVar("SimBegin2") || "";
+    var one2 = player.GetVar("One2") || "";
+    var two2 = player.GetVar("Two2") || "";
+    var three2 = player.GetVar("Three2") || "";
+    var four2 = player.GetVar("Four2") || "";
+    var five2 = player.GetVar("Five2") || "";
+    var six2 = player.GetVar("Six2") || "";
 
-        var simBegin3 = player.GetVar("SimBegin3") || "";
-        var one3 = player.GetVar("One3") || "";
-        var two3 = player.GetVar("Two3") || "";
-        var three3 = player.GetVar("Three3") || "";
-        var four3 = player.GetVar("Four3") || "";
-        var five3 = player.GetVar("Five3") || "";
+    var simBegin3 = player.GetVar("SimBegin3") || "";
+    var one3 = player.GetVar("One3") || "";
+    var two3 = player.GetVar("Two3") || "";
+    var three3 = player.GetVar("Three3") || "";
+    var four3 = player.GetVar("Four3") || "";
+    var five3 = player.GetVar("Five3") || "";
 
-        var compressions = player.GetVar("compressionsString") || "";
-        var debrief = player.GetVar("Debrief") || "";
+    var compressions = player.GetVar("compressionsString") || "";
+    var debrief = player.GetVar("Debrief") || "";
+    // Storyline vars from Script21 (fallback if log parse finds nothing)
+    var pauseCountVar = player.GetVar("CompressionPauseCount") || "";
+    var pauseTotalVar = player.GetVar("CompressionPauseTotal") || "";
+    var pauseAverageVar = player.GetVar("CompressionPauseAverage") || "";
+    var pauseDetailsVar = player.GetVar("CompressionPauseDetails") || "";
 
-        // =========================
-        // Confirm jsPDF is loaded
-        // =========================
-        if (!window.jspdf || !window.jspdf.jsPDF) {
-            alert(
-                "PDF generator not found.\n\n" +
-                "The jsPDF library was not loaded in story.html. " +
-                "Confirm jspdf.umd.min.js is present in story_content " +
-                "and linked before the closing </head> tag."
-            );
-            return;
+    // Confirm that jsPDF is available in story.html
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        alert(
+            "The PDF generator is not available.\n\n" +
+            "jsPDF must be loaded in index.html before story_content/user.js " +
+            "(vendor/jspdf.umd.min.js)."
+        );
+        return;
+    }
+
+    var jsPDF = window.jspdf.jsPDF;
+    var doc = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "letter"
+    });
+
+    var pageWidth = doc.internal.pageSize.getWidth();
+    var pageHeight = doc.internal.pageSize.getHeight();
+
+    // Design system — clinical briefing document (matches SimBox dashboard tone)
+    var theme = {
+        paper: [251, 248, 242],
+        ink: [28, 36, 48],
+        inkSoft: [96, 106, 116],
+        teal: [31, 106, 102],
+        tealDark: [22, 78, 75],
+        tealTint: [232, 244, 243],
+        copper: [154, 79, 44],
+        danger: [143, 45, 45],
+        dangerTint: [252, 236, 236],
+        success: [44, 107, 63],
+        successTint: [234, 246, 238],
+        warn: [180, 120, 40],
+        warnTint: [255, 244, 220],
+        border: [218, 212, 200],
+        white: [255, 255, 255]
+    };
+
+    var LONG_GAP_SECONDS = 10;
+    var margin = 14;
+    var headerHeight = 24;
+    var footerHeight = 11;
+    var contentTop = 32;
+    var contentBottom = pageHeight - footerHeight - 6;
+    var cardGap = 7;
+    var cardWidth = (pageWidth - margin * 2 - cardGap * 2) / 3;
+    // Tight cropped logo aspect ~780:220 ≈ 3.55:1
+    var logoW = 38;
+    var logoH = 10.7;
+
+    var stageThemes = [
+        { title: "Stage One", subtitle: "Initial response", accent: theme.teal, tint: theme.tealTint },
+        { title: "Stage Two", subtitle: "Optional continuation", accent: [75, 117, 162], tint: [236, 242, 249] },
+        { title: "Stage Three", subtitle: "ROSC & handoff", accent: theme.success, tint: theme.successTint }
+    ];
+
+    var generatedAt = new Date().toLocaleString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+
+    function cleanText(value) {
+        return String(value || "")
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/p>/gi, "\n")
+            .replace(/<[^>]*>/g, "")
+            .replace(/&nbsp;/gi, " ")
+            .replace(/&amp;/gi, "&")
+            .replace(/&lt;/gi, "<")
+            .replace(/&gt;/gi, ">")
+            .replace(/&quot;/gi, "\"")
+            .replace(/&#39;/gi, "'")
+            .replace(/[ \t]+\n/g, "\n")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
+    }
+
+    function pdfSafeText(value) {
+        return String(value || "")
+            .replace(/[\u2013\u2014\u2212]/g, "-")
+            .replace(/\u2026/g, "...");
+    }
+
+    function formatDisplayValues(rawValue, keepFullDate) {
+        return splitValues(rawValue).map(function (val) {
+            var text = pdfSafeText(val);
+            if (keepFullDate) return text;
+            var clockMatch = text.match(/(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)$/i);
+            if (clockMatch) return clockMatch[1].trim();
+            if (/^\d{1,2}:\d{2}(?::\d{2})?$/.test(text)) return text;
+            return text;
+        });
+    }
+
+    function splitValues(raw) {
+        var text = cleanText(raw);
+        if (!text) return [];
+        return text
+            .split(/\n|\|/)
+            .map(function (part) { return part.trim(); })
+            .filter(Boolean);
+    }
+
+    function clockToSeconds(clock) {
+        var parts = String(clock || "").trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (!parts) return null;
+        if (parts[3] != null) {
+            return Number(parts[1]) * 3600 + Number(parts[2]) * 60 + Number(parts[3]);
+        }
+        return Number(parts[1]) * 60 + Number(parts[2]);
+    }
+
+    function formatClock(totalSeconds) {
+        totalSeconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
+        var minutes = Math.floor(totalSeconds / 60);
+        var seconds = totalSeconds % 60;
+        return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+    }
+
+    function firstClock(rawValue) {
+        var values = formatDisplayValues(rawValue, false);
+        if (!values.length) return "--:--";
+        var clock = values[0].match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+        return clock ? clock[1] : "--:--";
+    }
+
+    function stageHasValues(entries) {
+        return entries.some(function (entry) {
+            return formatDisplayValues(entry[1], entry[2] === true).length > 0;
+        });
+    }
+
+    /** Pair each Compressions off → on and compute time between compressions. */
+    function calculateCompressionGaps(rawLog) {
+        var text = cleanText(rawLog);
+        var eventPattern = /Compressions\s+(off|on):\s*(\d{1,2}:\d{2}(?::\d{2})?)/gi;
+        var match;
+        var offStartedAt = null;
+        var pauses = [];
+
+        while ((match = eventPattern.exec(text)) !== null) {
+            var eventType = match[1].toLowerCase();
+            var eventSeconds = clockToSeconds(match[2]);
+            if (eventSeconds == null) continue;
+
+            if (eventType === "off" && offStartedAt === null) {
+                offStartedAt = eventSeconds;
+            } else if (eventType === "on" && offStartedAt !== null) {
+                var duration = eventSeconds - offStartedAt;
+                if (duration >= 0) {
+                    pauses.push({
+                        start: offStartedAt,
+                        end: eventSeconds,
+                        duration: duration,
+                        startClock: formatClock(offStartedAt),
+                        endClock: formatClock(eventSeconds),
+                        durationClock: formatClock(duration),
+                        isLong: duration >= LONG_GAP_SECONDS
+                    });
+                }
+                offStartedAt = null;
+            }
         }
 
-        var jsPDF = window.jspdf.jsPDF;
-        var doc = new jsPDF({
-            orientation: "landscape",
-            unit: "mm",
-            format: "letter"
+        var totalSeconds = 0;
+        var longestSeconds = 0;
+        var longCount = 0;
+        pauses.forEach(function (pause) {
+            totalSeconds += pause.duration;
+            if (pause.duration > longestSeconds) longestSeconds = pause.duration;
+            if (pause.isLong) longCount += 1;
+        });
+        var count = pauses.length;
+        var averageSeconds = count > 0 ? totalSeconds / count : 0;
+        var details = count > 0
+            ? pauses.map(function (pause, index) {
+                return "Gap " + (index + 1) + ": " +
+                    pause.startClock + "-" + pause.endClock +
+                    " = " + pause.durationClock + " between compressions" +
+                    (pause.isLong ? " [LONG >10s]" : "");
+            }).join("\n")
+            : "";
+
+        return {
+            pauses: pauses,
+            count: count,
+            totalSeconds: totalSeconds,
+            averageSeconds: averageSeconds,
+            longestSeconds: longestSeconds,
+            longCount: longCount,
+            totalClock: formatClock(totalSeconds),
+            averageClock: formatClock(averageSeconds),
+            longestClock: formatClock(longestSeconds),
+            details: details
+        };
+    }
+
+    /** Build on/gap visual segments from Initial / off|on / Stopped Compressions. */
+    function buildVisualSegments(rawLog) {
+        var text = cleanText(rawLog);
+        if (!text) return [];
+
+        var events = [];
+        var reStart = /Initial\s+compression\s+started(?:\s+at)?\s*:?\s*(\d{1,2}:\d{2}(?::\d{2})?)/gi;
+        var reOffOn = /Compressions\s+(off|on)\s*:\s*(\d{1,2}:\d{2}(?::\d{2})?)/gi;
+        var reStop = /Stopped\s+Compressions\s*:\s*(\d{1,2}:\d{2}(?::\d{2})?)/gi;
+        var m;
+
+        while ((m = reStart.exec(text)) !== null) {
+            var t0 = clockToSeconds(m[1]);
+            if (t0 != null) events.push({ kind: "start", t: t0 });
+        }
+        while ((m = reOffOn.exec(text)) !== null) {
+            var t1 = clockToSeconds(m[2]);
+            if (t1 != null) events.push({ kind: m[1].toLowerCase(), t: t1 });
+        }
+        while ((m = reStop.exec(text)) !== null) {
+            var t2 = clockToSeconds(m[1]);
+            if (t2 != null) events.push({ kind: "stop", t: t2 });
+        }
+
+        events.sort(function (a, b) { return a.t - b.t; });
+        if (!events.length) return [];
+
+        var segments = [];
+        var cursor = null;
+        var state = null;
+
+        events.forEach(function (ev) {
+            if (ev.kind === "start") {
+                cursor = ev.t;
+                state = "on";
+                return;
+            }
+            if (cursor == null) {
+                cursor = ev.t;
+                state = ev.kind === "off" ? "gap" : "on";
+                if (ev.kind === "stop") state = null;
+                return;
+            }
+            if (ev.t > cursor && state) {
+                var dur = ev.t - cursor;
+                segments.push({
+                    type: state,
+                    start: cursor,
+                    end: ev.t,
+                    duration: dur,
+                    isLong: state === "gap" && dur >= LONG_GAP_SECONDS
+                });
+            }
+            if (ev.kind === "off") {
+                cursor = ev.t;
+                state = "gap";
+            } else if (ev.kind === "on") {
+                cursor = ev.t;
+                state = "on";
+            } else if (ev.kind === "stop") {
+                cursor = ev.t;
+                state = null;
+            }
         });
 
-        // =========================
-        // Layout settings
-        // =========================
-        var pageWidth = doc.internal.pageSize.getWidth();
-        var pageHeight = doc.internal.pageSize.getHeight();
+        return segments;
+    }
 
-        var margin = 12;
-        var headerHeight = 15;
-        var footerHeight = 10;
-        var contentTop = 24;
-        var contentBottom = pageHeight - footerHeight - 5;
+    var compressionGaps = calculateCompressionGaps(compressions);
+    var visualSegments = buildVisualSegments(compressions);
+    var pauseCount = compressionGaps.count > 0
+        ? String(compressionGaps.count)
+        : (pauseCountVar || "0");
+    var pauseTotal = compressionGaps.count > 0
+        ? compressionGaps.totalClock
+        : (cleanText(pauseTotalVar) || "00:00");
+    var pauseAverage = compressionGaps.count > 0
+        ? compressionGaps.averageClock
+        : (cleanText(pauseAverageVar) || "00:00");
+    var pauseDetails = compressionGaps.details || cleanText(pauseDetailsVar) || "";
 
-        var cardGap = 6;
-        var cardWidth = (pageWidth - (margin * 2) - (cardGap * 2)) / 3;
+    function normalizeCompressionLog(value) {
+        var text = cleanText(value);
+        if (!text) return ["No compression timestamps recorded."];
+        return text
+            .replace(/\s*\|\s*/g, "\n")
+            .replace(/\s*(Compressions off:)/gi, "\n$1")
+            .replace(/\s*(Compressions on:)/gi, "\n$1")
+            .replace(/\s*(Initial compression started)/gi, "\n$1")
+            .replace(/\s*(Stopped Compressions:)/gi, "\n$1")
+            .split("\n")
+            .map(function (line) { return line.trim(); })
+            .filter(Boolean);
+    }
 
-        var titleColor = [45, 45, 45];
-        var stageOneColor = [57, 91, 116];
-        var stageTwoColor = [75, 117, 162];
-        var stageThreeColor = [73, 111, 89];
-        var borderColor = [190, 190, 190];
-        var cardFillColor = [248, 248, 248];
-        var logFillColor = [252, 252, 252];
+    /** Build start/stop markers + off→on gap rounds for a clearer layout. */
+    function buildCompressionRounds(rawLog, gaps) {
+        var lines = normalizeCompressionLog(rawLog);
+        var rounds = [];
+        var pauseIndex = 0;
+        var pendingOff = null;
+        var pendingOffClock = null;
+        var gapNum = 0;
 
-        // =========================
-        // Formatting helpers
-        // =========================
-        function cleanText(value) {
-            return String(value || "")
-                .replace(/<br\s*\/?>/gi, "\n")
-                .replace(/<\/p>/gi, "\n")
-                .replace(/<[^>]*>/g, "")
-                .replace(/&nbsp;/gi, " ")
-                .replace(/&amp;/gi, "&")
-                .replace(/[ \t]+\n/g, "\n")
-                .replace(/\n{3,}/g, "\n\n")
-                .trim();
+        lines.forEach(function (line) {
+            var lower = line.toLowerCase();
+            var clockMatch = line.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+            var clockSec = clockMatch ? clockToSeconds(clockMatch[1]) : null;
+            var clockLabel = clockMatch ? clockMatch[1] : "";
+
+            if (lower.indexOf("compressions off") !== -1 && clockSec != null) {
+                pendingOff = clockSec;
+                pendingOffClock = formatClock(clockSec);
+            } else if (lower.indexOf("compressions on") !== -1 && pendingOff != null && clockSec != null) {
+                var gapSec = null;
+                var pause = gaps && gaps.pauses ? gaps.pauses[pauseIndex] : null;
+                if (pause && pause.start === pendingOff && pause.end === clockSec) {
+                    gapSec = pause.duration;
+                    pauseIndex += 1;
+                } else if (clockSec >= pendingOff) {
+                    gapSec = clockSec - pendingOff;
+                }
+                gapNum += 1;
+                rounds.push({
+                    type: "round",
+                    number: gapNum,
+                    offClock: pendingOffClock || formatClock(pendingOff),
+                    onClock: formatClock(clockSec),
+                    gapClock: gapSec != null ? formatClock(gapSec) : "—",
+                    isLong: gapSec != null && gapSec >= LONG_GAP_SECONDS
+                });
+                pendingOff = null;
+                pendingOffClock = null;
+            } else if (
+                lower.indexOf("initial compression") !== -1 ||
+                lower.indexOf("stopped compressions") !== -1
+            ) {
+                rounds.push({
+                    type: "marker",
+                    text: pdfSafeText(line),
+                    kind: lower.indexOf("stopped") !== -1 ? "stop" : "start"
+                });
+            } else if (lower.indexOf("compressions off") === -1 && lower.indexOf("compressions on") === -1) {
+                rounds.push({ type: "marker", text: pdfSafeText(line), kind: "note" });
+            }
+        });
+
+        if (!rounds.length) {
+            rounds.push({ type: "marker", text: "No compression timestamps recorded.", kind: "note" });
+        }
+        return rounds;
+    }
+
+    function paintPageBackground() {
+        doc.setFillColor(theme.paper[0], theme.paper[1], theme.paper[2]);
+        doc.rect(0, 0, pageWidth, pageHeight, "F");
+    }
+
+    function addHeader() {
+        paintPageBackground();
+
+        // Clinical letterhead — white band, typeset brand (crisp), teal rule
+        doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        doc.rect(0, 0, pageWidth, headerHeight, "F");
+
+        var brandBlue = [36, 92, 168];
+        var brandRed = [214, 40, 41];
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.setTextColor(brandBlue[0], brandBlue[1], brandBlue[2]);
+        doc.text("SimBox", margin, 11.2);
+        var simW = doc.getTextWidth("SimBox");
+        doc.setTextColor(brandRed[0], brandRed[1], brandRed[2]);
+        doc.text("+", margin + simW + 0.4, 11.2);
+        var textX = margin + simW + 7.5;
+
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.setLineWidth(0.4);
+        doc.line(textX - 3.5, 5.5, textX - 3.5, headerHeight - 5.5);
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12.5);
+        doc.setTextColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
+        doc.text("Pediatric Cardiac Codes", textX, 10);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+        doc.text("Simulation debrief report", textX, 15.2);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+        doc.text(generatedAt, pageWidth - margin, 11.5, { align: "right" });
+
+        doc.setFillColor(theme.teal[0], theme.teal[1], theme.teal[2]);
+        doc.rect(0, headerHeight - 2.2, pageWidth, 2.2, "F");
+    }
+
+    function addFooter(pageNumber, totalPages) {
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.setLineWidth(0.3);
+        doc.line(margin, pageHeight - footerHeight, pageWidth - margin, pageHeight - footerHeight);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+        doc.text("SimBox+ · Anonymous session summary · Not a medical record", margin, pageHeight - 4.5);
+        doc.text("Page " + pageNumber + " of " + totalPages, pageWidth - margin, pageHeight - 4.5, { align: "right" });
+    }
+
+    function ensureSpace(requiredHeight, currentY) {
+        if (currentY + requiredHeight > contentBottom) {
+            doc.addPage();
+            addHeader();
+            return contentTop;
+        }
+        return currentY;
+    }
+
+    function measureEntryRow(label, rawValue, width, keepFullDate) {
+        var padX = 5.5;
+        var inner = width - padX * 2;
+        var values = formatDisplayValues(rawValue, keepFullDate);
+        if (!values.length) return 0;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        var labelLines = doc.splitTextToSize(label.replace(/:$/, ""), inner);
+        var labelH = labelLines.length * 3.8;
+
+        doc.setFont("courier", "bold");
+        doc.setFontSize(11);
+        var valueH = 0;
+        values.forEach(function (val) {
+            var valueLines = doc.splitTextToSize(val, inner);
+            valueH += valueLines.length * 4.8 + 0.5;
+        });
+
+        return Math.max(labelH + valueH + 5, 12);
+    }
+
+    function drawEntryRow(x, y, width, label, rawValue, rowIndex, keepFullDate) {
+        var padX = 5.5;
+        var inner = width - padX * 2;
+        var values = formatDisplayValues(rawValue, keepFullDate);
+        if (!values.length) return 0;
+
+        var rowH = measureEntryRow(label, rawValue, width, keepFullDate);
+
+        if (rowIndex % 2 === 0) {
+            doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        } else {
+            doc.setFillColor(248, 246, 242);
+        }
+        doc.rect(x + 1.5, y, width - 3, rowH, "F");
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+        var labelLines = doc.splitTextToSize(label.replace(/:$/, ""), inner);
+        doc.text(labelLines, x + padX, y + 4.5);
+
+        var valueY = y + 4.5 + labelLines.length * 3.8 + 1.0;
+        values.forEach(function (val) {
+            doc.setFont("courier", "bold");
+            doc.setFontSize(11);
+            doc.setTextColor(theme.copper[0], theme.copper[1], theme.copper[2]);
+            var valueLines = doc.splitTextToSize(val, inner);
+            doc.text(valueLines, x + padX, valueY);
+            valueY += valueLines.length * 4.8 + 0.5;
+        });
+
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.setLineWidth(0.15);
+        doc.line(x + padX, y + rowH, x + width - padX, y + rowH);
+
+        return rowH;
+    }
+
+    function measureStageCard(entries, width) {
+        var headerH = 17;
+        var padBottom = 4;
+        if (!stageHasValues(entries)) {
+            return headerH + padBottom + 16;
+        }
+        var total = headerH + padBottom;
+        entries.forEach(function (entry) {
+            var h = measureEntryRow(entry[0], entry[1], width, entry[2] === true);
+            if (h > 0) total += h;
+        });
+        return total;
+    }
+
+    function measureStageCardFromIndex(entries, width, startIndex, maxHeight) {
+        var headerH = 17;
+        var padBottom = 4;
+        var total = headerH + padBottom;
+        if (!stageHasValues(entries)) {
+            return headerH + padBottom + 16;
         }
 
-        function normalizeCompressionLog(value) {
-            var text = cleanText(value);
+        for (var i = startIndex || 0; i < entries.length; i++) {
+            var rowH = measureEntryRow(entries[i][0], entries[i][1], width, entries[i][2] === true);
+            if (rowH <= 0) continue;
+            if (maxHeight && total + rowH > maxHeight) break;
+            total += rowH;
+        }
 
-            if (!text) {
-                return "No compression timestamps recorded.";
+        return total;
+    }
+
+    function drawStageCard(stageTheme, entries, x, y, width, height, options) {
+        options = options || {};
+        var startIndex = options.startIndex || 0;
+        var continued = options.continued || false;
+        var forceRow = options.forceRow || false;
+        doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        doc.roundedRect(x, y, width, height, 2.5, 2.5, "F");
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.setLineWidth(0.35);
+        doc.roundedRect(x, y, width, height, 2.5, 2.5, "S");
+
+        doc.setFillColor(stageTheme.accent[0], stageTheme.accent[1], stageTheme.accent[2]);
+        doc.roundedRect(x, y, width, 14, 2.5, 2.5, "F");
+        doc.rect(x, y + 11, width, 3, "F");
+
+        doc.setFillColor(stageTheme.tint[0], stageTheme.tint[1], stageTheme.tint[2]);
+        doc.rect(x + 1.5, y + 14, width - 3, 3, "F");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(255, 255, 255);
+        doc.text(stageTheme.title + (continued ? " (cont.)" : ""), x + 6, y + 7.8);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(240, 248, 247);
+        doc.text(stageTheme.subtitle, x + 6, y + 12);
+
+        if (!stageHasValues(entries)) {
+            doc.setFont("helvetica", "italic");
+            doc.setFontSize(10);
+            doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+            doc.text("Not run in this session", x + 6, y + 24);
+            return entries.length;
+        }
+
+        var cursorY = y + 17;
+        var rowIndex = 0;
+        var contentLimit = y + height - 4;
+        var entryIndex = startIndex;
+
+        for (; entryIndex < entries.length; entryIndex++) {
+            var entry = entries[entryIndex];
+            var rowH = measureEntryRow(entry[0], entry[1], width, entry[2] === true);
+            if (rowH <= 0) continue;
+            if (!forceRow && cursorY + rowH > contentLimit) break;
+            rowH = drawEntryRow(x, cursorY, width, entry[0], entry[1], rowIndex, entry[2] === true);
+            cursorY += rowH;
+            rowIndex += 1;
+        }
+
+        return entryIndex;
+    }
+
+    function drawStageCardsSection(startY, stageSets) {
+        var indices = stageSets.map(function () { return 0; });
+        var sectionStarted = false;
+        var pageContinued = false;
+
+        while (true) {
+            var anyRemaining = stageSets.some(function (entries, i) {
+                return indices[i] < entries.length;
+            });
+            if (!anyRemaining) break;
+
+            if (!sectionStarted) {
+                startY = drawSectionTitle(
+                    startY,
+                    "Code timeline by stage",
+                    "Clinical actions and simulation clock timestamps"
+                );
+                sectionStarted = true;
+            } else if (pageContinued) {
+                startY = drawSectionTitle(
+                    startY,
+                    "Code timeline by stage (continued)",
+                    "Clinical actions and simulation clock timestamps"
+                );
             }
 
-            return text
-                .replace(/\s*\|\s*/g, "\n")
-                .replace(/\s*(Compressions off:)/gi, "\n$1")
-                .replace(/\s*(Compressions on:)/gi, "\n$1")
-                .replace(/\n{2,}/g, "\n")
-                .trim();
-        }
+            var availableH = contentBottom - startY - 8;
+            if (availableH < 36) {
+                doc.addPage();
+                addHeader();
+                startY = contentTop;
+                pageContinued = true;
+                continue;
+            }
 
-        function addHeader() {
-            doc.setFillColor(
-                titleColor[0],
-                titleColor[1],
-                titleColor[2]
-            );
-            doc.rect(0, 0, pageWidth, headerHeight, "F");
+            var chunkHeights = stageSets.map(function (entries, i) {
+                if (indices[i] >= entries.length) return 0;
+                return measureStageCardFromIndex(entries, cardWidth, indices[i], availableH);
+            });
+            var stageCardHeight = Math.max.apply(null, chunkHeights.filter(function (h) { return h > 0; }).concat([36]));
 
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(16);
-            doc.setTextColor(255, 255, 255);
-            doc.text(
-                "Simulation Summary / Debrief Report",
-                margin,
-                10
-            );
-        }
-
-        function addFooter(pageNumber, totalPages) {
-            doc.setDrawColor(210, 210, 210);
-            doc.line(
-                margin,
-                pageHeight - footerHeight,
-                pageWidth - margin,
-                pageHeight - footerHeight
-            );
-
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(8);
-            doc.setTextColor(105, 105, 105);
-
-            doc.text(
-                "Simulation debrief report - Page " +
-                    pageNumber +
-                    " of " +
-                    totalPages,
-                margin,
-                pageHeight - 4
-            );
-        }
-
-        function calculateStageHeight(entries, width) {
-            var padding = 5;
-            var rowGap = 2.5;
-            var headerSpace = 11;
-            var height = padding + headerSpace;
-
-            entries.forEach(function (entry) {
-                var label = entry[0];
-                var value = cleanText(entry[1]);
-
-                if (!value) {
-                    return;
+            var prevIndices = indices.slice();
+            stageThemes.forEach(function (st, i) {
+                var x = margin + (cardWidth + cardGap) * i;
+                if (indices[i] < stageSets[i].length) {
+                    indices[i] = drawStageCard(st, stageSets[i], x, startY, cardWidth, stageCardHeight, {
+                        startIndex: indices[i],
+                        continued: indices[i] > 0
+                    });
                 }
-
-                doc.setFont("helvetica", "bold");
-                doc.setFontSize(8.5);
-
-                var labelWidth = doc.getTextWidth(label + " ");
-
-                doc.setFont("helvetica", "normal");
-                doc.setFontSize(8.5);
-
-                var valueWidth = width - (padding * 2) - labelWidth;
-                var valueLines = doc.splitTextToSize(
-                    value,
-                    Math.max(valueWidth, 25)
-                );
-
-                height += Math.max(5, valueLines.length * 4.2) + rowGap;
             });
 
-            return height + padding;
-        }
-
-        function drawStageCard(title, entries, x, y, width, height, accentColor) {
-            var padding = 5;
-            var currentY = y + 16;
-
-            doc.setFillColor(
-                cardFillColor[0],
-                cardFillColor[1],
-                cardFillColor[2]
-            );
-            doc.roundedRect(x, y, width, height, 2, 2, "F");
-
-            doc.setDrawColor(
-                borderColor[0],
-                borderColor[1],
-                borderColor[2]
-            );
-            doc.setLineWidth(0.35);
-            doc.roundedRect(x, y, width, height, 2, 2, "S");
-
-            doc.setFillColor(
-                accentColor[0],
-                accentColor[1],
-                accentColor[2]
-            );
-            doc.roundedRect(x, y, width, 10, 2, 2, "F");
-            doc.rect(x, y + 7, width, 3, "F");
-
-            doc.setFont("helvetica", "bold");
-            doc.setFontSize(11);
-            doc.setTextColor(255, 255, 255);
-            doc.text(title, x + padding, y + 6.7);
-
-            entries.forEach(function (entry) {
-                var label = entry[0];
-                var value = cleanText(entry[1]);
-
-                if (!value) {
-                    return;
-                }
-
-                doc.setFont("helvetica", "bold");
-                doc.setFontSize(8.5);
-                doc.setTextColor(55, 55, 55);
-                doc.text(label, x + padding, currentY);
-
-                var labelWidth = doc.getTextWidth(label + " ");
-                var valueX = x + padding + labelWidth;
-                var valueWidth = width - (padding * 2) - labelWidth;
-
-                doc.setFont("helvetica", "normal");
-                doc.setTextColor(0, 0, 0);
-
-                var valueLines = doc.splitTextToSize(
-                    value,
-                    Math.max(valueWidth, 25)
-                );
-
-                doc.text(valueLines, valueX, currentY);
-
-                currentY += Math.max(5, valueLines.length * 4.2) + 2.5;
+            var progressed = indices.some(function (idx, i) {
+                return idx > prevIndices[i];
             });
-        }
+            if (!progressed && anyRemaining) {
+                stageThemes.forEach(function (st, i) {
+                    var x = margin + (cardWidth + cardGap) * i;
+                    if (indices[i] < stageSets[i].length) {
+                        indices[i] = drawStageCard(st, stageSets[i], x, startY, cardWidth, availableH, {
+                            startIndex: indices[i],
+                            continued: indices[i] > 0,
+                            forceRow: true
+                        });
+                    }
+                });
+            }
 
-        function drawCompressionLog(startY) {
-            var logText = normalizeCompressionLog(compressions);
-            var x = margin;
-            var width = pageWidth - (margin * 2);
-            var padding = 6;
-            var titleHeight = 12;
-            var lineHeight = 5;
+            startY = startY + stageCardHeight + 8;
+            pageContinued = stageSets.some(function (entries, i) {
+                return indices[i] < entries.length;
+            });
 
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(9.5);
-
-            var lines = doc.splitTextToSize(
-                logText,
-                width - (padding * 2)
-            );
-
-            var requiredHeight =
-                titleHeight +
-                (lines.length * lineHeight) +
-                (padding * 2);
-
-            if (startY + requiredHeight > contentBottom) {
+            if (pageContinued) {
                 doc.addPage();
                 addHeader();
                 startY = contentTop;
             }
+        }
+
+        return startY;
+    }
+
+    function drawSectionTitle(y, title, subtitle) {
+        y = ensureSpace(14, y);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12.5);
+        doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+        doc.text(title, margin, y);
+
+        if (subtitle) {
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(9);
+            doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+            doc.text(subtitle, margin, y + 5);
+            y += 5;
+        }
+
+        doc.setDrawColor(theme.teal[0], theme.teal[1], theme.teal[2]);
+        doc.setLineWidth(0.6);
+        doc.line(margin, y + 2.5, margin + 42, y + 2.5);
+        return y + 8;
+    }
+
+    function drawColorLegend(y, items) {
+        y = ensureSpace(8, y);
+        var lx = margin;
+        var swatch = 4.5;
+        var itemGap = 10;
+
+        items.forEach(function (item) {
+            doc.setFillColor(item.color[0], item.color[1], item.color[2]);
+            doc.roundedRect(lx, y - 3.2, swatch, swatch, 0.7, 0.7, "F");
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8.5);
+            doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+            doc.text(item.label, lx + swatch + 2.5, y + 0.3);
+            lx += swatch + 2.5 + doc.getTextWidth(item.label) + itemGap;
+        });
+
+        return y + 7;
+    }
+
+    function drawMetricTile(x, y, w, h, label, value, accent, useCourier) {
+        doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        doc.roundedRect(x, y, w, h, 2, 2, "F");
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.roundedRect(x, y, w, h, 2, 2, "S");
+
+        doc.setFillColor(accent[0], accent[1], accent[2]);
+        doc.roundedRect(x, y, w, 3, 2, 2, "F");
+        doc.rect(x, y + 2, w, 1.2, "F");
+
+        var displayValue = pdfSafeText(cleanText(value) || "—");
+        doc.setFont(useCourier ? "courier" : "helvetica", "bold");
+        doc.setFontSize(displayValue.length > 8 ? 12 : 15);
+        doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+        var valueLines = doc.splitTextToSize(displayValue, w - 8);
+        doc.text(valueLines, x + w / 2, y + (valueLines.length > 1 ? 9.5 : 11.5), { align: "center" });
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+        doc.text(label, x + w / 2, y + 17, { align: "center" });
+    }
+
+    function drawGlanceStrip(startY, stageSets) {
+        var stagesRun = stageSets.filter(stageHasValues).length;
+        var gaps = compressionGaps.count;
+        var longGaps = compressionGaps.longCount;
+        var longest = gaps > 0 ? compressionGaps.longestClock : "00:00";
+        var totalOff = gaps > 0 ? compressionGaps.totalClock : (cleanText(pauseTotalVar) || "00:00");
+
+        var boxH = 20;
+        var boxW = pageWidth - margin * 2;
+        startY = ensureSpace(boxH + 4, startY);
+
+        var facts = [
+            { label: "Stages", value: String(stagesRun) + "/3" },
+            { label: "Gaps", value: String(gaps || pauseCount || "0") },
+            { label: "Long gaps", value: String(longGaps), warn: longGaps > 0 },
+            { label: "Longest", value: longest, warn: compressionGaps.longestSeconds >= LONG_GAP_SECONDS },
+            { label: "Off chest", value: totalOff }
+        ];
+        var colW = boxW / facts.length;
+
+        // Light teal plate — dark text reads more clearly than white-on-black
+        doc.setFillColor(theme.tealTint[0], theme.tealTint[1], theme.tealTint[2]);
+        doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "F");
+        doc.setDrawColor(theme.teal[0], theme.teal[1], theme.teal[2]);
+        doc.setLineWidth(0.45);
+        doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "S");
+
+        facts.forEach(function (fact, i) {
+            var cx = margin + colW * i + colW / 2;
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(7.5);
+            doc.setTextColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
+            doc.text(fact.label.toUpperCase(), cx, startY + 6.5, { align: "center" });
+
+            doc.setFont("courier", "bold");
+            doc.setFontSize(12);
+            if (fact.warn) {
+                doc.setTextColor(theme.warn[0], theme.warn[1], theme.warn[2]);
+            } else {
+                doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+            }
+            doc.text(String(fact.value), cx, startY + 15, { align: "center" });
+
+            if (i < facts.length - 1) {
+                doc.setDrawColor(theme.teal[0], theme.teal[1], theme.teal[2]);
+                doc.setLineWidth(0.25);
+                doc.line(margin + colW * (i + 1), startY + 3.5, margin + colW * (i + 1), startY + boxH - 3.5);
+            }
+        });
+
+        return startY + boxH + 12;
+    }
+
+    function drawKeyIntervals(startY) {
+        var items = [
+            { label: "First CPR", value: firstClock(two1) },
+            { label: "Pads", value: firstClock(four1) },
+            { label: "Epi", value: firstClock(seven1) },
+            { label: "Defib", value: firstClock(eight1) },
+            { label: "ROSC", value: firstClock(two3) }
+        ];
+
+        startY = drawSectionTitle(
+            startY,
+            "Key intervals",
+            "Simulation-clock time to critical actions"
+        );
+
+        var boxH = 28;
+        var boxW = pageWidth - margin * 2;
+        var padX = 12;
+        startY = ensureSpace(boxH + 4, startY);
+
+        doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "F");
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "S");
+
+        var innerW = boxW - padX * 2;
+        var step = items.length > 1 ? innerW / (items.length - 1) : 0;
+        var lineY = startY + 10;
+
+        doc.setDrawColor(theme.teal[0], theme.teal[1], theme.teal[2]);
+        doc.setLineWidth(1.2);
+        doc.line(margin + padX, lineY, margin + padX + innerW, lineY);
+
+        items.forEach(function (item, i) {
+            var x = margin + padX + step * i;
+            var has = item.value && item.value !== "—";
 
             doc.setFillColor(
-                logFillColor[0],
-                logFillColor[1],
-                logFillColor[2]
+                has ? theme.teal[0] : theme.border[0],
+                has ? theme.teal[1] : theme.border[1],
+                has ? theme.teal[2] : theme.border[2]
             );
-            doc.roundedRect(x, startY, width, requiredHeight, 2, 2, "F");
+            doc.circle(x, lineY, 2.4, "F");
+            doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+            doc.circle(x, lineY, 1.0, "F");
 
-            doc.setDrawColor(
-                borderColor[0],
-                borderColor[1],
-                borderColor[2]
+            doc.setFont("courier", "bold");
+            doc.setFontSize(11);
+            doc.setTextColor(
+                has ? theme.ink[0] : theme.inkSoft[0],
+                has ? theme.ink[1] : theme.inkSoft[1],
+                has ? theme.ink[2] : theme.inkSoft[2]
             );
-            doc.roundedRect(x, startY, width, requiredHeight, 2, 2, "S");
-
-            doc.setFillColor(
-                titleColor[0],
-                titleColor[1],
-                titleColor[2]
-            );
-            doc.roundedRect(x, startY, width, titleHeight, 2, 2, "F");
-            doc.rect(x, startY + 9, width, 3, "F");
+            doc.text(has ? item.value : "--:--", x, startY + 18.5, { align: "center" });
 
             doc.setFont("helvetica", "bold");
-            doc.setFontSize(11);
-            doc.setTextColor(255, 255, 255);
-            doc.text("Compressions Log", x + padding, startY + 7.5);
+            doc.setFontSize(8);
+            doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+            doc.text(item.label, x, startY + 24, { align: "center" });
+        });
 
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(9.5);
-            doc.setTextColor(0, 0, 0);
+        return startY + boxH + 6;
+    }
+
+    function drawCompressionVisualBar(startY) {
+        startY = drawSectionTitle(
+            startY,
+            "Compression activity",
+            "Simulation-clock view of time on chest vs off chest"
+        );
+        startY = drawColorLegend(startY, [
+            { label: "Compressions on", color: theme.success },
+            { label: "Off chest (gap)", color: theme.copper }
+        ]);
+
+        var barH = 14;
+        var boxH = 10 + barH + 8;
+        startY = ensureSpace(boxH, startY);
+
+        var boxW = pageWidth - margin * 2;
+        var pad = 6;
+        var barX = margin + pad;
+        var barY = startY + 6;
+        var barW = boxW - pad * 2;
+
+        doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "F");
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.roundedRect(margin, startY, boxW, boxH, 2, 2, "S");
+
+        if (!visualSegments.length) {
+            doc.setFont("helvetica", "italic");
+            doc.setFontSize(8.5);
+            doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+            doc.text("No compression activity recorded.", barX, barY + 8);
+            return startY + boxH + 6;
+        }
+
+        var minT = visualSegments[0].start;
+        var maxT = visualSegments[visualSegments.length - 1].end;
+        var span = Math.max(1, maxT - minT);
+
+        visualSegments.forEach(function (seg) {
+            var x0 = barX + ((seg.start - minT) / span) * barW;
+            var x1 = barX + ((seg.end - minT) / span) * barW;
+            var w = Math.max(0.6, x1 - x0);
+            var color = theme.success;
+            if (seg.type === "gap") {
+                color = theme.copper;
+            }
+            doc.setFillColor(color[0], color[1], color[2]);
+            doc.rect(x0, barY, w, barH, "F");
+
+            if (seg.type === "gap" && w >= 10) {
+                doc.setFont("courier", "bold");
+                doc.setFontSize(8);
+                doc.setTextColor(255, 255, 255);
+                var label = formatClock(seg.duration);
+                if (doc.getTextWidth(label) < w - 1) {
+                    doc.text(label, x0 + w / 2, barY + 9, { align: "center" });
+                }
+            }
+        });
+
+        return startY + boxH + 8;
+    }
+
+    function drawCompressionStats(startY) {
+        var tileGap = 6;
+        var tileH = 22;
+        var tileW = (pageWidth - margin * 2 - tileGap * 2) / 3;
+        var blockH = tileH + 8;
+
+        startY = drawSectionTitle(
+            startY,
+            "Compression quality",
+            "Time between compressions (off to on) from the simulation clock"
+        );
+
+        startY = ensureSpace(blockH, startY);
+
+        drawMetricTile(margin, startY, tileW, tileH, "Gaps between CPR", pauseCount || "0", theme.copper, false);
+        drawMetricTile(margin + tileW + tileGap, startY, tileW, tileH, "Total time between", cleanText(pauseTotal) || "00:00", theme.danger, true);
+        drawMetricTile(margin + (tileW + tileGap) * 2, startY, tileW, tileH, "Average gap", cleanText(pauseAverage) || "00:00", theme.teal, true);
+
+        startY += blockH;
+
+        return startY + 4;
+    }
+
+    function drawCompressionRound(x, y, width, round) {
+        var rowH = 14;
+        var labelW = 16;
+        var gap = 3;
+        var cellW = (width - labelW - gap * 3) / 3;
+        var cellH = 11;
+        var cellY = y + (rowH - cellH) / 2;
+        var cellCenterY = cellY + cellH / 2;
+        var rowCenterY = y + rowH / 2;
+
+        doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+        doc.roundedRect(x, y, width, rowH, 1.8, 1.8, "F");
+        doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(x, y, width, rowH, 1.8, 1.8, "S");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(theme.inkSoft[0], theme.inkSoft[1], theme.inkSoft[2]);
+        doc.text("#" + round.number, x + 3, rowCenterY, { baseline: "middle" });
+
+        var cells = [
+            { label: "OFF", value: round.offClock, bg: theme.dangerTint, fg: theme.danger },
+            { label: "ON", value: round.onClock, bg: theme.successTint, fg: theme.success },
+            {
+                label: round.isLong ? "GAP · LONG" : "GAP",
+                value: round.gapClock,
+                bg: round.isLong ? theme.warnTint : [255, 244, 230],
+                fg: round.isLong ? theme.warn : theme.copper
+            }
+        ];
+
+        cells.forEach(function (cell, i) {
+            var cx = x + labelW + gap + i * (cellW + gap);
+            doc.setFillColor(cell.bg[0], cell.bg[1], cell.bg[2]);
+            doc.roundedRect(cx, cellY, cellW, cellH, 1.2, 1.2, "F");
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8.5);
+            doc.setTextColor(cell.fg[0], cell.fg[1], cell.fg[2]);
+            doc.text(cell.label, cx + 3.5, cellCenterY, { baseline: "middle" });
+
+            doc.setFont("courier", "bold");
+            doc.setFontSize(10);
+            doc.setTextColor(cell.fg[0], cell.fg[1], cell.fg[2]);
+            doc.text(cell.value, cx + cellW - 3.5, cellCenterY, { align: "right", baseline: "middle" });
+        });
+
+        return rowH + 4;
+    }
+
+    function drawCompressionMarker(x, y, width, marker) {
+        var h = 10;
+        if (marker.kind === "start") {
+            doc.setFillColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+            doc.setTextColor(255, 255, 255);
+        } else if (marker.kind === "stop") {
+            doc.setFillColor(theme.tealDark[0], theme.tealDark[1], theme.tealDark[2]);
+            doc.setTextColor(255, 255, 255);
+        } else {
+            doc.setFillColor(248, 246, 242);
+            doc.setTextColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+        }
+        doc.roundedRect(x, y, width, h, 1.2, 1.2, "F");
+        doc.setFont("helvetica", marker.kind === "note" ? "normal" : "bold");
+        doc.setFontSize(9);
+        doc.text(marker.text, x + 4, y + 6.5);
+        return h + 5;
+    }
+
+    function drawCompressionLog(startY) {
+        var rounds = buildCompressionRounds(compressions, compressionGaps);
+        var boxW = pageWidth - margin * 2;
+        var pad = 6;
+        var headerH = 12;
+        var innerW = boxW - pad * 2;
+
+        startY = drawSectionTitle(
+            startY,
+            "Compressions timeline",
+            "Each interruption as one round: off · on · time between"
+        );
+
+        var itemIndex = 0;
+        var firstChunk = true;
+
+        while (itemIndex < rounds.length) {
+            if (startY + headerH + pad * 2 + 20 > contentBottom) {
+                doc.addPage();
+                addHeader();
+                startY = contentTop;
+                firstChunk = false;
+            }
+
+            var available = contentBottom - startY - headerH - pad * 2;
+            var chunk = [];
+            var chunkHeight = 0;
+            var probe = itemIndex;
+
+            while (probe < rounds.length) {
+                var item = rounds[probe];
+                var itemH = item.type === "round" ? 18 : 15;
+                if (chunk.length && chunkHeight + itemH > available) break;
+                if (!chunk.length && itemH > available) {
+                    chunk.push(item);
+                    chunkHeight += itemH;
+                    probe += 1;
+                    break;
+                }
+                chunk.push(item);
+                chunkHeight += itemH;
+                probe += 1;
+            }
+
+            var boxH = headerH + chunkHeight + pad * 2;
+            startY = ensureSpace(boxH, startY);
+
+            doc.setFillColor(theme.white[0], theme.white[1], theme.white[2]);
+            doc.roundedRect(margin, startY, boxW, boxH, 2.5, 2.5, "F");
+            doc.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
+            doc.roundedRect(margin, startY, boxW, boxH, 2.5, 2.5, "S");
+
+            doc.setFillColor(theme.ink[0], theme.ink[1], theme.ink[2]);
+            doc.roundedRect(margin, startY, boxW, headerH, 2.5, 2.5, "F");
+            doc.rect(margin, startY + 9, boxW, 3, "F");
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(10);
+            doc.setTextColor(255, 255, 255);
             doc.text(
-                lines,
-                x + padding,
-                startY + titleHeight + 6
+                firstChunk ? "Interruption rounds" : "Interruption rounds (continued)",
+                margin + pad,
+                startY + 8
+            );
+
+            var cursorY = startY + headerH + pad;
+            chunk.forEach(function (entry) {
+                if (entry.type === "round") {
+                    cursorY += drawCompressionRound(margin + pad, cursorY, innerW, entry);
+                } else {
+                    cursorY += drawCompressionMarker(margin + pad, cursorY, innerW, entry);
+                }
+            });
+
+            itemIndex += chunk.length;
+            firstChunk = false;
+            startY = startY + boxH + 6;
+        }
+
+        return startY;
+    }
+
+    // Create report.
+    addHeader();
+
+    var stageOne = [
+        ["Begin simulation", simBegin1, true],
+        ["Initial pulse check", one1],
+        ["Initiated compressions", two1],
+        ["Initiated BVM", three1],
+        ["Applied pads", four1],
+        ["IV/IO access", five1],
+        ["Rhythm/pulse check", six1],
+        ["Epinephrine administered", seven1],
+        ["Defib delivered", eight1]
+    ];
+
+    var stageTwo = [
+        ["Begin Stage 2", simBegin2, true],
+        ["Rhythm/pulse check", one2],
+        ["Epinephrine administered", two2],
+        ["Defib delivered", three2],
+        ["Switch compressors", four2],
+        ["Continuous compressions", five2],
+        ["Breath every 2-3 seconds", six2]
+    ];
+
+    var stageThree = [
+        ["Begin Stage 3", simBegin3, true],
+        ["Checked pulse", one3],
+        ["Announced ROSC", two3],
+        ["Stopped compressions", three3],
+        ["Post-resuscitation care", four3],
+        ["Called for transfer", five3],
+        ["Clicked Go to Debrief", debrief]
+    ];
+
+    var stageSets = [stageOne, stageTwo, stageThree];
+
+    var y = contentTop;
+    y = drawStageCardsSection(y, stageSets);
+
+    // Start compression analysis on a fresh page when little room remains
+    if (y + 55 > contentBottom) {
+        doc.addPage();
+        addHeader();
+        y = contentTop;
+    }
+
+    y = drawCompressionVisualBar(y);
+    y = drawCompressionStats(y);
+    drawCompressionLog(y);
+
+    // Add footer after every page is created.
+    var totalPages = doc.getNumberOfPages();
+
+    for (var page = 1; page <= totalPages; page++) {
+        doc.setPage(page);
+        addFooter(page, totalPages);
+    }
+
+    function savePdf(doc, filename) {
+        var blob;
+        try {
+            blob = doc.output("blob");
+        } catch (e0) {
+            try {
+                doc.save(filename);
+                return;
+            } catch (e1) {
+                alert("Could not create the PDF. Try opening the case in a new browser tab.");
+                return;
+            }
+        }
+
+        var url = URL.createObjectURL(blob);
+        var opened = false;
+
+        try {
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            a.rel = "noopener";
+            a.style.display = "none";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            opened = true;
+        } catch (e2) {}
+
+        if (!opened) {
+            try {
+                opened = !!window.open(url, "_blank");
+            } catch (e3) {}
+        }
+
+        if (!opened) {
+            try {
+                doc.output("dataurlnewwindow");
+                opened = true;
+            } catch (e4) {}
+        }
+
+        window.setTimeout(function () {
+            try {
+                URL.revokeObjectURL(url);
+            } catch (e5) {}
+        }, 60000);
+
+        if (!opened) {
+            alert(
+                "The PDF was created but this embedded page blocked the download. Open the case in a new tab and use Print Summary again."
             );
         }
-
-        // =========================
-        // Report content
-        // =========================
-        var stageOne = [
-            ["Begin simulation:", simBegin1],
-            ["Initial pulse check:", one1],
-            ["Initiated compressions:", two1],
-            ["Initiated BVM:", three1],
-            ["Applied pads:", four1],
-            ["IV/IO access:", five1],
-            ["Rhythm/pulse check:", six1]
-        ];
-
-        var stageTwo = [
-            ["Begin Stage 2:", simBegin2],
-            ["Rhythm/pulse check:", one2],
-            ["Epinephrine administered:", two2],
-            ["Defib delivered:", three2],
-            ["Switch compressors:", four2],
-            ["Continuous compressions:", five2],
-            ["Breath every 2-3 seconds:", six2]
-        ];
-
-        var stageThree = [
-            ["Begin Stage 3:", simBegin3],
-            ["Checked pulse:", one3],
-            ["Announced ROSC:", two3],
-            ["Stopped compressions:", three3],
-            ["Post-resuscitation care:", four3],
-            ["Called for transfer:", five3],
-            ["Clicked Go to Debrief:", debrief]
-        ];
-
-        // =========================
-        // Draw page one
-        // =========================
-        addHeader();
-
-        var stageOneHeight = calculateStageHeight(stageOne, cardWidth);
-        var stageTwoHeight = calculateStageHeight(stageTwo, cardWidth);
-        var stageThreeHeight = calculateStageHeight(stageThree, cardWidth);
-
-        var stageCardHeight = Math.max(
-            stageOneHeight,
-            stageTwoHeight,
-            stageThreeHeight
-        );
-
-        var stageY = contentTop;
-
-        drawStageCard(
-            "Stage One",
-            stageOne,
-            margin,
-            stageY,
-            cardWidth,
-            stageCardHeight,
-            stageOneColor
-        );
-
-        drawStageCard(
-            "Stage Two (Optional)",
-            stageTwo,
-            margin + cardWidth + cardGap,
-            stageY,
-            cardWidth,
-            stageCardHeight,
-            stageTwoColor
-        );
-
-        drawStageCard(
-            "Stage Three",
-            stageThree,
-            margin + ((cardWidth + cardGap) * 2),
-            stageY,
-            cardWidth,
-            stageCardHeight,
-            stageThreeColor
-        );
-
-        drawCompressionLog(stageY + stageCardHeight + 8);
-
-        // =========================
-        // Add footer to every page
-        // =========================
-        var totalPages = doc.getNumberOfPages();
-
-        for (var page = 1; page <= totalPages; page++) {
-            doc.setPage(page);
-            addFooter(page, totalPages);
-        }
-
-        doc.save("Simulation_Debrief_Report.pdf");
-
-    } catch (error) {
-        console.error("PDF generation error:", error);
-
-        alert(
-            "The PDF could not be created.\n\n" +
-            "Error: " + error.message +
-            "\n\nOpen the browser console (F12 > Console) to see the full error."
-        );
     }
-})();
+
+    var reportDate = new Date().toISOString().slice(0, 10);
+    savePdf(doc, "Simulation_Debrief_Report_" + reportDate + ".pdf");
+  })();
 }
 
 };
